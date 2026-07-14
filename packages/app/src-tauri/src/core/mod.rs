@@ -1,4 +1,5 @@
 pub mod books;
+pub mod co_reading;
 pub mod database;
 pub mod fonts;
 pub mod llama;

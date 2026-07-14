@@ -5,6 +5,12 @@ import { getBookWithStatusById } from "@/services/book-service";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useLibraryStore } from "@/store/library-store";
 import type { Book, BookConfig, BookNote, BookProgress } from "@/types/book";
+import type {
+  CoReadingRuntimeState,
+  CoReadingSnapshot,
+  CoReadingSourceTarget,
+  ReadingFootprintTarget,
+} from "@/types/co-reading";
 import type { SessionStats } from "@/types/reading-session";
 import type { Thread } from "@/types/thread";
 import type { FoliateView } from "@/types/view";
@@ -35,6 +41,10 @@ export interface ReaderState {
   activeContext: string | undefined;
   openDropdown: OpenDropdown;
   currentThread: Thread | null;
+  coReadingSnapshot: CoReadingSnapshot | null;
+  coReadingRuntime: CoReadingRuntimeState;
+  pendingReadingFootprint: ReadingFootprintTarget | null;
+  pendingCoReadingSource: CoReadingSourceTarget | null;
 
   initBook: () => Promise<void>;
   setConfig: (config: BookConfig) => void;
@@ -50,6 +60,10 @@ export interface ReaderState {
   setError: (error: string | null) => void;
   setOpenDropdown: (dropdown: OpenDropdown) => void;
   setCurrentThread: (thread: Thread | null) => void;
+  setCoReadingSnapshot: (snapshot: CoReadingSnapshot | null) => void;
+  setCoReadingRuntime: (runtime: Partial<CoReadingRuntimeState>) => void;
+  setPendingReadingFootprint: (target: ReadingFootprintTarget | null) => void;
+  setPendingCoReadingSource: (target: CoReadingSourceTarget | null) => void;
 }
 
 export const createReaderStore = (bookId: string) => {
@@ -67,6 +81,16 @@ export const createReaderStore = (bookId: string) => {
     isSessionInitialized: false,
     openDropdown: null,
     currentThread: null,
+    coReadingSnapshot: null,
+    pendingReadingFootprint: null,
+    pendingCoReadingSource: null,
+    coReadingRuntime: {
+      visibleBlockCount: 0,
+      leadingBlockKey: null,
+      leadingBlockDwellMs: 0,
+      isProcessing: false,
+      error: null,
+    },
 
     initBook: async () => {
       try {
@@ -172,6 +196,13 @@ export const createReaderStore = (bookId: string) => {
     setActiveContext: (context) => set({ activeContext: context }),
     setOpenDropdown: (dropdown) => set({ openDropdown: dropdown }),
     setCurrentThread: (thread: Thread | null) => set({ currentThread: thread }),
+    setCoReadingSnapshot: (coReadingSnapshot) => set({ coReadingSnapshot }),
+    setCoReadingRuntime: (runtime) =>
+      set((state) => ({
+        coReadingRuntime: { ...state.coReadingRuntime, ...runtime },
+      })),
+    setPendingReadingFootprint: (pendingReadingFootprint) => set({ pendingReadingFootprint }),
+    setPendingCoReadingSource: (pendingCoReadingSource) => set({ pendingCoReadingSource }),
   }));
 };
 

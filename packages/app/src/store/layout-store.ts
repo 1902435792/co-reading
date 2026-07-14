@@ -18,6 +18,7 @@ interface LayoutStore {
 
   isChatVisible: boolean;
   isNotepadVisible: boolean;
+  pendingNotepadAnnotationId: string | null;
 
   openBook: (bookId: string, title: string) => void;
   removeTab: (tabId: string) => void;
@@ -27,6 +28,8 @@ interface LayoutStore {
   getReaderStore: (tabId: string) => ReaderStore | undefined;
   toggleChatSidebar: () => void;
   toggleNotepadSidebar: () => void;
+  openNotepadAnnotation: (annotationId: string) => void;
+  clearPendingNotepadAnnotation: () => void;
 }
 
 export const useLayoutStore = create<LayoutStore>()(
@@ -38,6 +41,7 @@ export const useLayoutStore = create<LayoutStore>()(
       readerStores: new Map(),
       isChatVisible: true,
       isNotepadVisible: false,
+      pendingNotepadAnnotationId: null,
 
       openBook: (bookId: string, title: string) => {
         const tabId = `reader-${bookId}`;
@@ -88,7 +92,10 @@ export const useLayoutStore = create<LayoutStore>()(
               removedTabIndex < tabsAfterClose.length ? removedTabIndex : tabsAfterClose.length - 1;
             const newActiveTab = tabsAfterClose[newActiveIndex];
             if (newActiveTab) {
-              const updatedTabs = tabsAfterClose.map((t) => ({ ...t, active: t.id === newActiveTab.id }));
+              const updatedTabs = tabsAfterClose.map((t) => ({
+                ...t,
+                active: t.id === newActiveTab.id,
+              }));
               set({
                 tabs: updatedTabs,
                 activeTabId: newActiveTab.id,
@@ -142,6 +149,17 @@ export const useLayoutStore = create<LayoutStore>()(
 
       toggleNotepadSidebar: () => {
         set({ isNotepadVisible: !get().isNotepadVisible });
+      },
+
+      openNotepadAnnotation: (annotationId: string) => {
+        set({
+          isNotepadVisible: true,
+          pendingNotepadAnnotationId: annotationId,
+        });
+      },
+
+      clearPendingNotepadAnnotation: () => {
+        set({ pendingNotepadAnnotationId: null });
       },
     }),
     {

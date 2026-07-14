@@ -39,6 +39,7 @@ export interface DBBookNote {
   text?: string;
   style?: string;
   color?: string;
+  author?: "human" | "ai";
   note: string;
 
   created_at?: string;

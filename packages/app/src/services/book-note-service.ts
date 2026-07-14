@@ -9,6 +9,7 @@ export interface BookNoteCreateData {
   text?: string;
   style?: "highlight" | "underline" | "squiggly";
   color?: "red" | "yellow" | "green" | "blue" | "violet";
+  author?: "human" | "ai";
   note: string;
   context?: {
     before: string;

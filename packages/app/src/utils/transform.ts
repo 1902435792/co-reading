@@ -1,5 +1,13 @@
-import { Book, BookConfig, BookFormat, BookNote, BookNoteType, HighlightColor, HighlightStyle } from "@/types/book";
-import { DBBookConfig, DBBook, DBBookNote } from "@/types/records";
+import type {
+  Book,
+  BookConfig,
+  BookFormat,
+  BookNote,
+  BookNoteType,
+  HighlightColor,
+  HighlightStyle,
+} from "@/types/book";
+import type { DBBook, DBBookConfig, DBBookNote } from "@/types/records";
 
 export const transformBookConfigToDB = (bookConfig: unknown, userId: string): DBBookConfig => {
   const { bookHash, progress, location, searchConfig, viewSettings, updatedAt } = bookConfig as BookConfig;
@@ -101,7 +109,8 @@ export const transformBookFromDB = (dbBook: DBBook): Book => {
 };
 
 export const transformBookNoteToDB = (bookNote: unknown, userId: string): DBBookNote => {
-  const { bookHash, id, type, cfi, text, style, color, note, createdAt, updatedAt, deletedAt } = bookNote as BookNote;
+  const { bookHash, id, type, cfi, text, style, color, author, note, createdAt, updatedAt, deletedAt } =
+    bookNote as BookNote;
 
   return {
     user_id: userId,
@@ -112,6 +121,7 @@ export const transformBookNoteToDB = (bookNote: unknown, userId: string): DBBook
     text,
     style,
     color,
+    author,
     note,
     created_at: new Date(createdAt ?? Date.now()).toISOString(),
     updated_at: new Date(updatedAt ?? Date.now()).toISOString(),
@@ -121,7 +131,7 @@ export const transformBookNoteToDB = (bookNote: unknown, userId: string): DBBook
 };
 
 export const transformBookNoteFromDB = (dbBookNote: DBBookNote): BookNote => {
-  const { book_hash, id, type, cfi, text, style, color, note, created_at, updated_at, deleted_at } = dbBookNote;
+  const { book_hash, id, type, cfi, text, style, color, author, note, created_at, updated_at, deleted_at } = dbBookNote;
 
   return {
     bookHash: book_hash,
@@ -131,6 +141,7 @@ export const transformBookNoteFromDB = (dbBookNote: DBBookNote): BookNote => {
     text,
     style: style as HighlightStyle,
     color: color as HighlightColor,
+    author,
     note,
     createdAt: new Date(created_at!).getTime(),
     updatedAt: new Date(updated_at!).getTime(),

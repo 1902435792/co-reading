@@ -84,6 +84,11 @@ export default function ApiConfigSection({ provider, onFieldChange }: ApiConfigS
           onChange={(e) => onFieldChange("baseUrl", e.target.value)}
           placeholder="https://api.example.com/v1"
         />
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          VCP Bridge：基础 URL 填 <code>http://127.0.0.1:3100/v1</code>，模型 ID 使用
+          <code className="mx-1">profile/model</code>
+          形式（如 <code>coreading/gemini-3.5-flash</code>），不要把 Profile 写入基础 URL。
+        </p>
       </div>
     </div>
   );

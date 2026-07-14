@@ -1,6 +1,8 @@
 import { DigestView } from "@/pages/notes/digest-view";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
+import { useLayoutStore } from "@/store/layout-store";
 import { useReaderStore as useAppReaderStore } from "@/store/reader-store";
+import { useEffect } from "react";
 import { AnnotationItem } from "./annotation-item";
 import { useAnnotations } from "./hooks";
 import { NotepadHeader } from "./notepad-header";
@@ -16,6 +18,18 @@ export const NotepadContent = ({ bookId, showDigest, onOpenDigest, onCloseDigest
   const { annotations, status: annotationStatus, handleDeleteAnnotation } = useAnnotations({ bookId });
   const { activeBook } = useAppReaderStore();
   const progress = useReaderStore((state) => state.progress);
+  const pendingAnnotationId = useLayoutStore((state) => state.pendingNotepadAnnotationId);
+  const clearPendingAnnotation = useLayoutStore((state) => state.clearPendingNotepadAnnotation);
+
+  useEffect(() => {
+    if (!pendingAnnotationId || annotationStatus !== "success") return;
+    const element = document.querySelector<HTMLElement>(`[data-annotation-id="${CSS.escape(pendingAnnotationId)}"]`);
+    if (element) {
+      element.scrollIntoView({ block: "center", behavior: "smooth" });
+      element.focus({ preventScroll: true });
+    }
+    clearPendingAnnotation();
+  }, [annotationStatus, clearPendingAnnotation, pendingAnnotationId]);
 
   // DigestView 作为整页覆盖
   if (showDigest) {
@@ -51,8 +65,7 @@ export const NotepadContent = ({ bookId, showDigest, onOpenDigest, onCloseDigest
               <AnnotationItem
                 key={annotation.id}
                 annotation={annotation}
-                bookId={bookId}
-                bookTitle={activeBook?.title}
+                selected={pendingAnnotationId === annotation.id}
                 onDelete={handleDeleteAnnotation}
               />
             ))

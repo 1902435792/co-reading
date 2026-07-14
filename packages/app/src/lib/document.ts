@@ -57,6 +57,7 @@ export interface SectionItem {
   size: number;
   linear: string;
   location?: Location;
+  createDocument?: () => Document | Promise<Document>;
 }
 
 export type BookMetadata = {

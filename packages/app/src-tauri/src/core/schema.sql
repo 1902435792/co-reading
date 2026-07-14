@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS book_notes (
     text TEXT,                             -- 选中的文本内容
     style TEXT,                            -- 高亮样式: highlight|underline|squiggly
     color TEXT,                            -- 颜色: red|yellow|green|blue|violet
+    author TEXT NOT NULL DEFAULT 'human',  -- 标注作者: human|ai
     note TEXT NOT NULL,                    -- 用户笔记内容
     context_before TEXT,                   -- 前文上下文
     context_after TEXT,                    -- 后文上下文
@@ -125,6 +126,114 @@ CREATE INDEX IF NOT EXISTS idx_book_notes_book_id ON book_notes(book_id);
 CREATE INDEX IF NOT EXISTS idx_book_notes_type ON book_notes(type);
 CREATE INDEX IF NOT EXISTS idx_book_notes_created_at ON book_notes(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_book_notes_cfi ON book_notes(cfi);
+
+-- AI 共读设置 - 每本书独立控制
+CREATE TABLE IF NOT EXISTS co_reading_settings (
+    book_id TEXT PRIMARY KEY NOT NULL,
+    status TEXT NOT NULL DEFAULT 'off' CHECK (status IN ('off', 'active', 'paused')),
+    dwell_seconds INTEGER NOT NULL DEFAULT 15 CHECK (dwell_seconds BETWEEN 5 AND 60),
+    rolling_summary TEXT NOT NULL DEFAULT '',
+    model_provider_id TEXT NOT NULL DEFAULT '',
+    model_id TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+);
+
+-- AI 共读文本块账本 - 记录停留、解锁和处理终态
+CREATE TABLE IF NOT EXISTS co_reading_blocks (
+    id TEXT PRIMARY KEY NOT NULL,
+    book_id TEXT NOT NULL,
+    block_key TEXT NOT NULL,
+    section_index INTEGER NOT NULL,
+    section_label TEXT NOT NULL DEFAULT '',
+    cfi TEXT NOT NULL,
+    text TEXT NOT NULL,
+    text_hash TEXT NOT NULL,
+    dwell_ms INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'tracking' CHECK (status IN ('tracking', 'queued', 'processing', 'silent', 'annotated', 'failed')),
+    decision TEXT,
+    annotation_id TEXT,
+    error TEXT,
+    unlocked_at INTEGER,
+    processed_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+    FOREIGN KEY (annotation_id) REFERENCES book_notes(id) ON DELETE SET NULL,
+    UNIQUE (book_id, block_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_co_reading_blocks_book_status
+    ON co_reading_blocks(book_id, status, unlocked_at);
+CREATE INDEX IF NOT EXISTS idx_co_reading_blocks_updated_at
+    ON co_reading_blocks(updated_at);
+
+-- Nova 自主范围阅读任务
+CREATE TABLE IF NOT EXISTS co_reading_range_tasks (
+    id TEXT PRIMARY KEY NOT NULL,
+    book_id TEXT NOT NULL,
+    format TEXT NOT NULL CHECK (format IN ('EPUB', 'PDF')),
+    range_kind TEXT NOT NULL CHECK (range_kind IN ('section', 'page')),
+    start_index INTEGER NOT NULL,
+    end_index INTEGER NOT NULL,
+    start_label TEXT NOT NULL DEFAULT '',
+    end_label TEXT NOT NULL DEFAULT '',
+    start_char_offset INTEGER,
+    end_char_offset INTEGER,
+    start_percent REAL,
+    end_percent REAL,
+    status TEXT NOT NULL CHECK (status IN ('running', 'paused', 'completed', 'stopped', 'failed')),
+    previous_follow_status TEXT NOT NULL DEFAULT 'off' CHECK (previous_follow_status IN ('off', 'active', 'paused')),
+    candidate_limit INTEGER NOT NULL DEFAULT 40,
+    per_section_limit INTEGER NOT NULL DEFAULT 6,
+    request_limit INTEGER NOT NULL DEFAULT 8,
+    scanned_count INTEGER NOT NULL DEFAULT 0,
+    selected_count INTEGER NOT NULL DEFAULT 0,
+    processed_count INTEGER NOT NULL DEFAULT 0,
+    request_count INTEGER NOT NULL DEFAULT 0,
+    cursor_index INTEGER NOT NULL,
+    error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    completed_at INTEGER,
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_co_reading_range_tasks_book_status
+    ON co_reading_range_tasks(book_id, status, updated_at DESC);
+
+-- Nova 阅读地图足迹；任务历史独立于普通跟读账本
+CREATE TABLE IF NOT EXISTS co_reading_footprints (
+    id TEXT PRIMARY KEY NOT NULL,
+    task_id TEXT NOT NULL,
+    book_id TEXT NOT NULL,
+    block_key TEXT NOT NULL,
+    section_index INTEGER NOT NULL,
+    section_label TEXT NOT NULL DEFAULT '',
+    cfi TEXT NOT NULL,
+    text TEXT NOT NULL,
+    text_hash TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('filtered', 'candidate', 'selected', 'silent', 'annotated', 'failed')),
+    reason TEXT,
+    summary TEXT,
+    comment TEXT,
+    annotation_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    processed_at INTEGER,
+    FOREIGN KEY (task_id) REFERENCES co_reading_range_tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+    FOREIGN KEY (annotation_id) REFERENCES book_notes(id) ON DELETE SET NULL,
+    UNIQUE (task_id, block_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_co_reading_footprints_book_section
+    ON co_reading_footprints(book_id, section_index, updated_at);
+CREATE INDEX IF NOT EXISTS idx_co_reading_footprints_task_status
+    ON co_reading_footprints(task_id, status, section_index);
+CREATE INDEX IF NOT EXISTS idx_co_reading_footprints_annotation
+    ON co_reading_footprints(annotation_id);
 
 -- 技能库表 - 存储 AI 技能的标准操作流程
 CREATE TABLE IF NOT EXISTS skills (

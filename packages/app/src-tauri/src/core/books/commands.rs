@@ -131,10 +131,8 @@ pub async fn get_books(
 
     if let Some(tags) = &opts.tags {
         if !tags.is_empty() {
-            let tag_conditions: Vec<String> = tags
-                .iter()
-                .map(|_| "tags LIKE ?".to_string())
-                .collect();
+            let tag_conditions: Vec<String> =
+                tags.iter().map(|_| "tags LIKE ?".to_string()).collect();
             conditions.push(format!("({})", tag_conditions.join(" OR ")));
             for tag in tags {
                 bind_values.push(format!("%\"{}\"%%", tag));
@@ -783,6 +781,12 @@ pub async fn create_book_note(
     app_handle: AppHandle,
     note_data: BookNoteCreateData,
 ) -> Result<BookNote, String> {
+    if !matches!(
+        note_data.author.as_deref(),
+        None | Some("human") | Some("ai")
+    ) {
+        return Err("笔记作者必须是 human 或 ai".to_string());
+    }
     let db_pool = get_db_pool(&app_handle).await?;
     let id = uuid::Uuid::new_v4().to_string();
 
@@ -808,14 +812,15 @@ pub async fn create_book_note(
         note_data.text,
         note_data.style,
         note_data.color,
+        note_data.author.unwrap_or_else(|| "human".to_string()),
         note_data.note,
         note_data.context,
     );
 
     sqlx::query(
         r#"
-        INSERT INTO book_notes (id, book_id, type, cfi, text, style, color, note, context_before, context_after, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+        INSERT INTO book_notes (id, book_id, type, cfi, text, style, color, author, note, context_before, context_after, created_at, updated_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
         "#
     )
     .bind(&book_note.id)
@@ -825,6 +830,7 @@ pub async fn create_book_note(
     .bind(&book_note.text)
     .bind(&book_note.style)
     .bind(&book_note.color)
+    .bind(&book_note.author)
     .bind(&book_note.note)
     .bind(&context_before)
     .bind(&context_after)
@@ -846,7 +852,7 @@ pub async fn get_book_notes(
 
     let rows = sqlx::query(
         r#"
-        SELECT id, book_id, type, cfi, text, style, color, note, context_before, context_after, created_at, updated_at
+        SELECT id, book_id, type, cfi, text, style, color, author, note, context_before, context_after, created_at, updated_at
         FROM book_notes
         WHERE book_id = ?1
         ORDER BY created_at ASC
@@ -925,7 +931,7 @@ pub async fn update_book_note(
     // 查询更新后的笔记
     let row = sqlx::query(
         r#"
-        SELECT id, book_id, type, cfi, text, style, color, note, context_before, context_after, created_at, updated_at
+        SELECT id, book_id, type, cfi, text, style, color, author, note, context_before, context_after, created_at, updated_at
         FROM book_notes
         WHERE id = ?1
         "#

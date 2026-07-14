@@ -7,6 +7,9 @@ import { getInsetEdges } from "@/utils/grid";
 import { getViewInsets } from "@/utils/insets";
 import { useEffect, useMemo } from "react";
 import useBookShortcuts from "../hooks/use-book-shortcuts";
+import { useCoReading } from "../hooks/use-co-reading";
+import { useCoReadingNavigation } from "../hooks/use-co-reading-navigation";
+import { useCoReadingRange } from "../hooks/use-co-reading-range";
 import { useFoliateViewer } from "../hooks/use-foliate-viewer";
 import Annotator from "./annotator";
 import FooterBar from "./footer-bar";
@@ -74,6 +77,9 @@ export default function ReaderViewer() {
   const { activeTabId, isHomeActive } = useLayoutStore();
   const tabId = `reader-${bookId}`;
   const isTabVisible = !isHomeActive && activeTabId === tabId;
+  useCoReading(bookId, isTabVisible);
+  useCoReadingRange(bookId);
+  useCoReadingNavigation(bookId);
 
   const { sessionStats, isInitialized: isSessionInitialized } = useReadingSession(bookId, {
     saveInterval: 5 * 1000,

@@ -228,6 +228,7 @@ export class View extends HTMLElement {
   #tocProgress;
   #pageProgress;
   #searchResults = new Map();
+  #annotations = new Map();
   #searchIndicatorConfig = { type: 'outline', options: {} };
   #cursorAutohider = new CursorAutohider(this, () => this.hasAttribute("autohide-cursor"));
   isFixedLayout = false;
@@ -343,7 +344,7 @@ export class View extends HTMLElement {
     const tocItem = this.#tocProgress?.getProgress(index, range);
     const pageItem = this.#pageProgress?.getProgress(index, range);
     const cfi = this.getCFI(index, range);
-    this.lastLocation = { ...progress, tocItem, pageItem, cfi, range };
+    this.lastLocation = { ...progress, index, tocItem, pageItem, cfi, range };
     if (reason === "snap" || reason === "page" || reason === "scroll") this.history.replaceState(cfi);
     this.#emit("relocate", this.lastLocation);
   }
@@ -406,6 +407,8 @@ export class View extends HTMLElement {
       }
       return;
     }
+    if (remove) this.#annotations.delete(value);
+    else this.#annotations.set(value, annotation);
     const { index, anchor } = await this.resolveNavigation(value);
     const obj = this.#getOverlayer(index);
     if (obj) {
@@ -433,7 +436,12 @@ export class View extends HTMLElement {
       (e) => {
         const [value, range] = overlayer.hitTest(e);
         if (value && !value.startsWith(SEARCH_PREFIX)) {
-          this.#emit("show-annotation", { value, index, range });
+          this.#emit("show-annotation", {
+            value,
+            index,
+            range,
+            annotation: this.#annotations.get(value),
+          });
         }
       },
       false,

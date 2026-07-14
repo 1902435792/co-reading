@@ -49,6 +49,7 @@ export interface BookNote {
   text?: string;
   style?: HighlightStyle;
   color?: HighlightColor;
+  author?: "human" | "ai";
   note: string;
   context?: {
     before: string;
@@ -174,9 +175,13 @@ export interface ViewSettings
 
 export interface BookProgress {
   location: string;
+  /** TOC item id; never use this as a spine/page index. */
   sectionId: number;
+  /** Actual zero-based spine/page index when the renderer provides it. */
+  sectionIndex?: number;
   sectionHref: string;
   sectionLabel: string;
+  section?: { current: number; total: number };
   pageinfo: PageInfo;
   timeinfo: TimeInfo;
   range: Range;

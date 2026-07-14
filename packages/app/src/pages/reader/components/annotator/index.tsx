@@ -1,5 +1,7 @@
+import { openReadingFootprintForAnnotation } from "@/components/side-chat/co-reading-backlink";
 import { HIGHLIGHT_COLOR_HEX } from "@/services/constants";
 import { useAppSettingsStore } from "@/store/app-settings-store";
+import { useLayoutStore } from "@/store/layout-store";
 import type { BookNote } from "@/types/book";
 import { Overlayer } from "foliate-js/overlayer.js";
 import { NotebookPen } from "lucide-react";
@@ -21,6 +23,7 @@ const Annotator: React.FC = () => {
 
   const bookId = useReaderStore((state) => state.bookId)!;
   const view = useReaderStore((state) => state.view);
+
   const globalViewSettings = settings.globalViewSettings;
 
   // 使用 use-annotator hook
@@ -49,7 +52,11 @@ const Annotator: React.FC = () => {
     handleSendAIQuery,
   } = useAnnotator({ bookId });
 
-  const { handleScroll, handleMouseUp, handleShowPopup } = useTextSelector(bookId, setSelection, handleDismissPopup);
+  const { handleScroll, handleMouseUp, handleShowPopup } = useTextSelector(
+    bookId,
+    setSelection,
+    handleDismissPopup
+  );
 
   const onLoad = (event: Event) => {
     const detail = (event as CustomEvent).detail;
@@ -75,28 +82,63 @@ const Annotator: React.FC = () => {
       const { defaultView } = doc;
       const node = range.startContainer;
       const el = node.nodeType === 1 ? node : node.parentElement;
-      const { writingMode, lineHeight, fontSize } = defaultView.getComputedStyle(el);
+      const { writingMode, lineHeight, fontSize } =
+        defaultView.getComputedStyle(el);
       const lineHeightValue =
-        Number.parseFloat(lineHeight) || globalViewSettings?.lineHeight! * globalViewSettings?.defaultFontSize!;
-      const fontSizeValue = Number.parseFloat(fontSize) || globalViewSettings?.defaultFontSize;
+        Number.parseFloat(lineHeight) ||
+        globalViewSettings?.lineHeight! * globalViewSettings?.defaultFontSize!;
+      const fontSizeValue =
+        Number.parseFloat(fontSize) || globalViewSettings?.defaultFontSize;
       const strokeWidth = 2;
-      const padding = globalViewSettings?.vertical ? (lineHeightValue - fontSizeValue! - strokeWidth) / 2 : strokeWidth;
-      draw(Overlayer[style as keyof typeof Overlayer], { writingMode, color: hexColor, padding });
+      const padding = globalViewSettings?.vertical
+        ? (lineHeightValue - fontSizeValue! - strokeWidth) / 2
+        : strokeWidth;
+      draw(Overlayer[style as keyof typeof Overlayer], {
+        writingMode,
+        color: hexColor,
+        padding,
+      });
     }
   };
 
   const onShowAnnotation = (event: Event) => {
     const detail = (event as CustomEvent).detail;
     const { value: cfi, index, range } = detail;
+    const annotationId = (detail.annotation as BookNote | undefined)?.id;
     const currentConfig = store.getState().config;
 
     const { booknotes = [] } = currentConfig!;
-    const annotations = booknotes.filter((booknote) => booknote.type === "annotation" && !booknote.deletedAt);
-    const annotation = annotations.find((annotation) => annotation.cfi === cfi);
+    const annotations = booknotes.filter(
+      (booknote) => booknote.type === "annotation" && !booknote.deletedAt
+    );
+    const annotation = annotations.find((annotation) =>
+      annotationId ? annotation.id === annotationId : annotation.cfi === cfi
+    );
 
     if (!annotation) return;
 
-    const newSelection = { key: bookId, annotated: true, text: annotation.text ?? "", range, index };
+    if (annotation.author === "ai") {
+      // 左侧批注栏高亮 + 右侧阅读地图联动
+      useLayoutStore.getState().openNotepadAnnotation(annotation.id);
+      const opened = openReadingFootprintForAnnotation({
+        bookId,
+        annotation,
+        setPendingReadingFootprint: store.getState().setPendingReadingFootprint,
+        eventTarget: typeof window !== "undefined" ? window : undefined,
+      });
+      if (opened) {
+        useLayoutStore.setState({ isChatVisible: true });
+      }
+      return;
+    }
+
+    const newSelection = {
+      key: bookId,
+      annotated: true,
+      text: annotation.text ?? "",
+      range,
+      index,
+    };
 
     setSelectedStyle(annotation.style!);
     setSelectedColor(annotation.color!);
@@ -126,21 +168,24 @@ const Annotator: React.FC = () => {
 
   return (
     <div>
-      {showAnnotPopup && !showAskAIPopup && trianglePosition && annotPopupPosition && (
-        <AnnotationPopup
-          dir={globalViewSettings?.rtl ? "rtl" : "ltr"}
-          isVertical={globalViewSettings?.vertical ?? false}
-          buttons={buttons}
-          position={annotPopupPosition}
-          trianglePosition={trianglePosition}
-          highlightOptionsVisible={highlightOptionsVisible}
-          selectedStyle={selectedStyle}
-          selectedColor={selectedColor}
-          popupWidth={annotPopupWidth}
-          popupHeight={annotPopupHeight}
-          onHighlight={handleHighlight}
-        />
-      )}
+      {showAnnotPopup &&
+        !showAskAIPopup &&
+        trianglePosition &&
+        annotPopupPosition && (
+          <AnnotationPopup
+            dir={globalViewSettings?.rtl ? "rtl" : "ltr"}
+            isVertical={globalViewSettings?.vertical ?? false}
+            buttons={buttons}
+            position={annotPopupPosition}
+            trianglePosition={trianglePosition}
+            highlightOptionsVisible={highlightOptionsVisible}
+            selectedStyle={selectedStyle}
+            selectedColor={selectedColor}
+            popupWidth={annotPopupWidth}
+            popupHeight={annotPopupHeight}
+            onHighlight={handleHighlight}
+          />
+        )}
       {showAskAIPopup && askAIPopupPosition && selection && (
         <AskAIPopup
           style={{

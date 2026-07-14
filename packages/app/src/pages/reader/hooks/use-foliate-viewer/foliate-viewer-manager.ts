@@ -35,10 +35,11 @@ export interface ProgressData {
   sectionHref: string;
   sectionLabel: string;
   sectionId: number;
-  section: number;
+  sectionIndex?: number;
+  section?: { current: number; total: number };
   pageinfo: any;
   timeinfo: any;
-  range: any;
+  range: Range;
 }
 
 export class FoliateViewerManager {
@@ -219,6 +220,7 @@ export class FoliateViewerManager {
         sectionHref: detail.tocItem?.href || "",
         sectionLabel: detail.tocItem?.label || "",
         sectionId: detail.tocItem?.id ?? 0,
+        sectionIndex: Number.isInteger(detail.index) ? detail.index : undefined,
         section: detail.section,
         pageinfo: detail.location,
         timeinfo: detail.time,
@@ -249,7 +251,11 @@ export class FoliateViewerManager {
     }
 
     let frameCount = 0;
-    let lastLayout: { scrollWidth: number; scrollHeight: number; childCount: number } | null = null;
+    let lastLayout: {
+      scrollWidth: number;
+      scrollHeight: number;
+      childCount: number;
+    } | null = null;
     let stableFrames = 0;
 
     const checkFrame = () => {
@@ -355,7 +361,12 @@ export class FoliateViewerManager {
     }
   }
 
-  updateInsets(insets: { top: number; right: number; bottom: number; left: number }): void {
+  updateInsets(insets: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  }): void {
     this.config.insets = insets;
     if (this.styleManager) {
       const dimensions = this.getContainerDimensions();

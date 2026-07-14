@@ -3,18 +3,16 @@ import { useChatState } from "@/hooks/use-chat-state";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useThemeStore } from "@/store/theme-store";
-import {
-  History,
-  MessageCirclePlus,
-  Settings,
-} from "lucide-react";
-import { useState, useCallback } from "react";
+import type { ReadingFootprintTarget } from "@/types/co-reading";
+import { BookOpenText, History, MessageCirclePlus, MessagesSquare, Settings } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { ChatContainerRoot } from "../prompt-kit/chat-container";
 import { ScrollButton } from "../prompt-kit/scroll-button";
 import { MindmapDialog } from "../tools/mindmap-dialog";
 import { ChatInputArea } from "./chat-input-area";
 import { ChatMessages } from "./chat-messages";
 import { ChatThreads } from "./chat-threads";
+import { CoReadingPanelV2 } from "./co-reading-panel-v2";
 import ModelSelector from "./model-selector";
 
 interface ChatContentProps {
@@ -106,9 +104,7 @@ function ChatContent({ bookId }: ChatContentProps) {
           </div>
           <div className="space-y-2">
             <h3 className="font-semibold text-neutral-900 text-xl dark:text-neutral-50">AI 阅读助手</h3>
-            <p className="max-w-md text-sm dark:text-neutral-400">
-              直接提问，或使用下方的快捷按钮开始。
-            </p>
+            <p className="max-w-md text-sm dark:text-neutral-400">直接提问，或使用下方的快捷按钮开始。</p>
           </div>
         </div>
       </div>
@@ -116,7 +112,7 @@ function ChatContent({ bookId }: ChatContentProps) {
   );
 
   return (
-    <main id="chat-sidebar" className="flex h-full flex-col overflow-hidden ">
+    <main className="flex h-full flex-col overflow-hidden">
       <div className="ml-1 flex-shrink-0 border-neutral-300 dark:border-neutral-700">
         <div className="flex h-8 items-center justify-between">
           <div className="flex items-center gap-2 pl-0.5">
@@ -204,4 +200,61 @@ function ChatContent({ bookId }: ChatContentProps) {
   );
 }
 
-export default ChatContent;
+type SideChatMode = "chat" | "co-reading";
+
+export default function SideChat({ bookId }: ChatContentProps) {
+  const storageKey = `deepreader:side-chat-mode:${bookId ?? "global"}`;
+  const readingFootprintTarget = useReaderStore(
+    (state) => state.pendingReadingFootprint,
+  ) as ReadingFootprintTarget | null;
+  const [mode, setMode] = useState<SideChatMode>(() => {
+    if (readingFootprintTarget) return "co-reading";
+    const saved = window.localStorage.getItem(storageKey);
+    return saved === "co-reading" ? "co-reading" : "chat";
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(storageKey, mode);
+  }, [mode, storageKey]);
+
+  useEffect(() => {
+    if (!readingFootprintTarget || readingFootprintTarget.bookId !== bookId) return;
+    setMode("co-reading");
+    window.localStorage.setItem(`deepreader:co-reading-expanded:${readingFootprintTarget.bookId}`, "true");
+  }, [bookId, readingFootprintTarget]);
+
+  return (
+    <div id="chat-sidebar" className="flex h-full flex-col overflow-hidden bg-background">
+      <div className="grid grid-cols-2 gap-1 border-b px-2 py-1.5">
+        <button
+          type="button"
+          className={`flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-colors ${
+            mode === "chat"
+              ? "bg-neutral-200 font-medium text-neutral-900 dark:bg-neutral-700 dark:text-neutral-50"
+              : "text-muted-foreground hover:bg-muted"
+          }`}
+          onClick={() => setMode("chat")}
+        >
+          <MessagesSquare className="size-3.5" />
+          问答
+        </button>
+        <button
+          type="button"
+          className={`flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-colors ${
+            mode === "co-reading" ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted"
+          }`}
+          onClick={() => setMode("co-reading")}
+        >
+          <BookOpenText className="size-3.5" />
+          共读
+        </button>
+      </div>
+      <div className={mode === "chat" ? "min-h-0 flex-1" : "hidden"}>
+        <ChatContent bookId={bookId} />
+      </div>
+      {mode === "co-reading" && bookId && (
+        <CoReadingPanelV2 bookId={bookId} readingFootprintTarget={readingFootprintTarget} />
+      )}
+    </div>
+  );
+}

@@ -5,19 +5,22 @@ export interface FoliateView extends HTMLElement {
   open: (book: BookDoc) => Promise<void>;
   close: () => void;
   init: (options: { lastLocation: string }) => void;
-  goTo: (href: string) => void;
+  goTo: (target: string | number | { fraction: number }) => Promise<unknown>;
   goToFraction: (fraction: number) => void;
   prev: (distance?: number) => void;
   next: (distance?: number) => void;
   goLeft: () => void;
   goRight: () => void;
   getCFI: (index: number, range: Range) => string;
-  resolveCFI: (cfi: string) => { index: number; anchor: (doc: Document) => Range };
+  resolveCFI: (cfi: string) => {
+    index: number;
+    anchor: (doc: Document) => Range;
+  };
   addAnnotation: (note: BookNote, remove?: boolean) => { index: number; label: string };
   search: (config: BookSearchConfig) => AsyncGenerator<BookSearchResult | string, void, void>;
   clearSearch: () => void;
   setSearchIndicator: (type: string, options: any) => void;
-  select: (target: string | number | { fraction: number }) => void;
+  select: (target: string | number | { fraction: number }) => Promise<void>;
   deselect: () => void;
   book: BookDoc;
   language: {
@@ -47,7 +50,11 @@ export interface FoliateView extends HTMLElement {
     prev: () => Promise<void>;
     nextSection?: () => Promise<void>;
     prevSection?: () => Promise<void>;
-    goTo?: (params: { index: number; anchor: number }) => void;
+    goTo?: (params: {
+      index: number;
+      anchor: number | Range | ((doc: Document) => Range);
+      select?: boolean;
+    }) => void | Promise<void>;
     setStyles?: (css: string) => void;
     getContents: () => { doc: Document; index?: number; overlayer?: unknown }[];
     scrollToAnchor: (anchor: number | Range) => void;

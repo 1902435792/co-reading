@@ -272,6 +272,7 @@ pub struct BookNote {
     pub text: Option<String>,
     pub style: Option<String>,
     pub color: Option<String>,
+    pub author: String,
     pub note: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<serde_json::Value>,
@@ -291,6 +292,7 @@ pub struct BookNoteCreateData {
     pub text: Option<String>,
     pub style: Option<String>,
     pub color: Option<String>,
+    pub author: Option<String>,
     pub note: String,
     pub context: Option<serde_json::Value>,
 }
@@ -316,6 +318,7 @@ impl BookNote {
         text: Option<String>,
         style: Option<String>,
         color: Option<String>,
+        author: String,
         note: String,
         context: Option<serde_json::Value>,
     ) -> Self {
@@ -328,6 +331,7 @@ impl BookNote {
             text,
             style,
             color,
+            author,
             note,
             context,
             created_at: now,
@@ -358,6 +362,7 @@ impl BookNote {
             text: row.try_get("text")?,
             style: row.try_get("style")?,
             color: row.try_get("color")?,
+            author: row.try_get("author")?,
             note: row.try_get("note")?,
             context,
             created_at: row.try_get("created_at")?,
