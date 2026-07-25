@@ -195,6 +195,7 @@ pub async fn create_task(
     Ok(task)
 }
 
+#[cfg(test)]
 pub async fn get_task(pool: &SqlitePool, id: &str) -> Result<CoReadingRangeTask, String> {
     let row = sqlx::query("SELECT * FROM co_reading_range_tasks WHERE id=?")
         .bind(id)
