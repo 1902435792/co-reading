@@ -1,15 +1,22 @@
 import ModelSelector from "@/components/side-chat/model-selector";
 import { Button } from "@/components/ui/button";
 import {
+  getCoReadingErrorInfo,
+  groupCoReadingFailures,
+} from "@/lib/co-reading-core";
+import {
   isBookCoReadingModelOverride,
   resolveCoReadingModel,
 } from "@/lib/co-reading-model";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
 import {
+  getCoReadingRangeSnapshot,
+  getCoReadingSnapshot,
   retryCoReadingBlocks,
   updateCoReadingSettings,
 } from "@/services/co-reading-service";
 import { type SelectedModel, useProviderStore } from "@/store/provider-store";
+import { getCoReadingRuntimeLabel } from "@/lib/co-reading-run-state";
 import {
   ChevronDown,
   ChevronRight,
@@ -23,6 +30,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   CoReadingAccordion as Accordion,
   CoReadingAccordionContent as AccordionContent,
@@ -55,6 +63,25 @@ export function CoReadingPanelV2({
   );
   const [section, setSection] = useState<React.Key | null>("activity");
   const [dwellSeconds, setDwellSeconds] = useState(20);
+  const [retryingFailed, setRetryingFailed] = useState(false);
+  const [processingElapsedSeconds, setProcessingElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!runtime.isProcessing || !runtime.processingStartedAt) {
+      setProcessingElapsedSeconds(0);
+      return;
+    }
+    const updateElapsed = () =>
+      setProcessingElapsedSeconds(
+        Math.max(
+          0,
+          Math.floor((Date.now() - runtime.processingStartedAt!) / 1_000)
+        )
+      );
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1_000);
+    return () => window.clearInterval(timer);
+  }, [runtime.isProcessing, runtime.processingStartedAt]);
 
   useEffect(
     () => window.localStorage.setItem(storageKey, String(expanded)),
@@ -80,17 +107,22 @@ export function CoReadingPanelV2({
         ? "已关闭"
         : snapshot.settings.status === "paused"
         ? "已暂停"
-        : runtime.isProcessing
-        ? "Nova 正在阅读"
-        : snapshot.stats.queued > 0
-        ? `${snapshot.stats.queued} 个文本块待处理`
-        : runtime.visibleBlockCount > 0
-        ? `正在跟读 ${runtime.visibleBlockCount} 个文本块`
-        : "等待阅读内容",
+        : getCoReadingRuntimeLabel({
+            status: snapshot.settings.status,
+            isProcessing: runtime.isProcessing,
+            runBlocked: runtime.runBlocked,
+            visibleQueuedBlockCount: runtime.visibleQueuedBlockCount,
+            visibleBlockCount: runtime.visibleBlockCount,
+            visibleTerminalBlockCount: runtime.visibleTerminalBlockCount,
+            visibleFailedBlockCount: runtime.visibleFailedBlockCount,
+            historicalQueuedBlockCount: runtime.historicalQueuedBlockCount,
+          }),
     progress: `${snapshot.stats.annotated} 条边注`,
     lastMessage:
       runtime.error ||
-      (runtime.isProcessing ? "正在生成共读决策" : "跟随当前阅读进度"),
+      (runtime.isProcessing
+        ? `正在完整阅读当前页的 ${runtime.processingBlockCount} 段正文（已等待 ${processingElapsedSeconds} 秒）`
+        : "跟随当前可见页；整页读完后自主留下 0–3 条书评"),
   };
   const model = resolveCoReadingModel(
     snapshot.settings,
@@ -99,6 +131,65 @@ export function CoReadingPanelV2({
   );
   const hasBookModelOverride = isBookCoReadingModelOverride(snapshot.settings);
   const failed = snapshot.blocks.filter((block) => block.status === "failed");
+  const failedGroups = groupCoReadingFailures(failed);
+  const failedFocusCount = new Set(
+    failed.map((block) => block.focusKey?.trim() || block.blockKey)
+  ).size;
+  const modelLabel = model
+    ? `${model.providerName} / ${model.modelName}`
+    : "尚未选择可用模型";
+  const hasUnresolvedRangeTask = async () => {
+    const rangeSnapshot = await getCoReadingRangeSnapshot(bookId);
+    return rangeSnapshot.tasks.some((task) =>
+      ["running", "paused", "failed"].includes(task.status)
+    );
+  };
+
+  const retryAllFailed = async () => {
+    if (retryingFailed || failed.length === 0) return;
+    if (!model) {
+      toast.error("请先选择可用模型，再重试共读失败项。");
+      return;
+    }
+    setRetryingFailed(true);
+    try {
+      if (await hasUnresolvedRangeTask()) {
+        toast.info("请先续跑或停止当前范围阅读任务，再恢复普通跟读。");
+        return;
+      }
+      const retried = await retryCoReadingBlocks(
+        bookId,
+        failed.map((block) => block.blockKey)
+      );
+      if (retried === 0) {
+        setSnapshot(await getCoReadingSnapshot(bookId));
+        toast.info("没有仍处于失败状态的文本块需要重试。");
+        return;
+      }
+      if (snapshot.settings.status !== "active") {
+        await updateCoReadingSettings({
+          bookId,
+          status: "active",
+          dwellSeconds: snapshot.settings.dwellSeconds,
+        });
+      }
+      window.dispatchEvent(
+        new CustomEvent("deepreader:co-reading-retry", { detail: { bookId } })
+      );
+      const latest = await getCoReadingSnapshot(bookId);
+      setSnapshot(latest);
+      toast.success(`已重新排队 ${retried} 个文本块，并恢复普通跟读。`);
+    } catch (error) {
+      toast.error(getCoReadingErrorInfo(error).message);
+      try {
+        setSnapshot(await getCoReadingSnapshot(bookId));
+      } catch {
+        // Keep the existing snapshot when the database itself is unavailable.
+      }
+    } finally {
+      setRetryingFailed(false);
+    }
+  };
   const changeSettings = async (
     updates: Partial<{
       status: "off" | "active" | "paused";
@@ -107,14 +198,26 @@ export function CoReadingPanelV2({
       modelId: string;
     }>
   ) => {
-    const settings = await updateCoReadingSettings({
-      bookId,
-      status: updates.status ?? snapshot.settings.status,
-      dwellSeconds: updates.dwellSeconds ?? snapshot.settings.dwellSeconds,
-      modelProviderId: updates.modelProviderId,
-      modelId: updates.modelId,
-    });
-    setSnapshot({ ...snapshot, settings });
+    try {
+      if (
+        updates.status != null &&
+        updates.status !== "paused" &&
+        (await hasUnresolvedRangeTask())
+      ) {
+        toast.info("范围阅读进行、暂停或等待续跑期间，普通跟读必须保持暂停。");
+        return;
+      }
+      const settings = await updateCoReadingSettings({
+        bookId,
+        status: updates.status ?? snapshot.settings.status,
+        dwellSeconds: updates.dwellSeconds ?? snapshot.settings.dwellSeconds,
+        modelProviderId: updates.modelProviderId,
+        modelId: updates.modelId,
+      });
+      setSnapshot({ ...snapshot, settings });
+    } catch (error) {
+      toast.error(getCoReadingErrorInfo(error).message);
+    }
   };
   const saveStatus = (status: "off" | "active" | "paused") =>
     changeSettings({ status });
@@ -136,7 +239,7 @@ export function CoReadingPanelV2({
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
-          <strong className="text-sm">Nova 共读</strong>
+          <strong className="text-sm">Agent</strong>
           <i
             className={`size-2 rounded-full ${
               snapshot.settings.status === "active"
@@ -236,7 +339,7 @@ export function CoReadingPanelV2({
               <Clock3 className="size-4 text-primary" />
               <label className="flex flex-1 items-center gap-2 text-xs">
                 <span className="shrink-0">
-                  停留 {dwellSeconds} 秒后交给 Nova
+                  停留 {dwellSeconds} 秒后交给 Agent
                 </span>
                 <input
                   type="range"
@@ -268,11 +371,7 @@ export function CoReadingPanelV2({
               请先选择模型。范围阅读和普通跟读共用这个模型。
             </p>
           )}
-          <CoReadingDiaryAction
-            bookId={bookId}
-            bookTitle={bookTitle}
-            settings={snapshot.settings}
-          />
+          <CoReadingDiaryAction bookId={bookId} bookTitle={bookTitle} />
           <Accordion
             expandedValue={section}
             onValueChange={setSection}
@@ -290,7 +389,7 @@ export function CoReadingPanelV2({
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="rounded bg-muted p-2">
                     <b className="block text-base">{snapshot.stats.queued}</b>
-                    待处理
+                    历史待处理
                   </div>
                   <div className="rounded bg-muted p-2">
                     <b className="block text-base">
@@ -331,29 +430,44 @@ export function CoReadingPanelV2({
               <AccordionTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm">
                 <ListChecks className="size-4" />
                 统计与失败
-                <span className="ml-auto text-xs">{failed.length}</span>
+                <span className="ml-auto text-xs">
+                  {failedFocusCount} 页 / {failed.length} 段
+                </span>
               </AccordionTrigger>
               <AccordionContent className="space-y-2 px-3 pb-3">
                 {failed.length === 0 ? (
                   <p className="text-muted-foreground text-xs">没有失败项。</p>
                 ) : (
                   <>
-                    <p className="text-red-600 text-xs">
-                      <CircleAlert className="mr-1 inline size-3" />
-                      {failed[0]?.error}
+                    <p className="rounded bg-muted px-2 py-1.5 text-muted-foreground text-xs">
+                      历史失败共 {failedFocusCount} 个页面焦点、{failed.length}{" "}
+                      段正文；每个页面焦点对应一次模型请求。当前模型：
+                      {modelLabel}
                     </p>
+                    <div className="space-y-1.5">
+                      {failedGroups.map((group) => (
+                        <div
+                          key={`${group.kind}:${group.message}`}
+                          className={`rounded border px-2 py-1.5 text-xs ${
+                            group.fatal
+                              ? "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200"
+                              : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"
+                          }`}
+                        >
+                          <CircleAlert className="mr-1 inline size-3" />
+                          {group.focusCount} 个页面焦点（{group.blockCount}{" "}
+                          段正文） · {group.message}
+                        </div>
+                      ))}
+                    </div>
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-7"
-                      onClick={async () => {
-                        await retryCoReadingBlocks(
-                          bookId,
-                          failed.map((b) => b.blockKey)
-                        );
-                      }}
+                      disabled={retryingFailed || !model}
+                      onClick={() => void retryAllFailed()}
                     >
-                      重试全部
+                      {retryingFailed ? "正在恢复…" : "重试全部并恢复跟读"}
                     </Button>
                   </>
                 )}
