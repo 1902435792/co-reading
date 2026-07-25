@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test:co-reading": "node --import tsx --test \"src/**/*co-reading*.test.ts\""
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.5",
