@@ -247,16 +247,16 @@ temporary leftovers: []
 
 ### 5.1 DeepReader
 
-| 检查                             | 结果                           |
-| -------------------------------- | ------------------------------ |
-| 全部 `*co-reading*.test.ts` 文件 | 8 个文件                       |
-| Node tests                       | 57/57 通过                     |
-| TypeScript                       | 通过                           |
-| Vite production build            | 通过，5136 modules transformed |
-| `cargo check`                    | 通过                           |
-| Rust `cargo test --lib`          | 14/14 通过                     |
-| 任务路径 `git diff --check`      | 通过                           |
-| 安装版数据库只读检查             | `PRAGMA quick_check=ok`        |
+| 检查                        | 结果                          |
+| --------------------------- | ----------------------------- |
+| 全部 `*.test.ts` 文件       | 14 个文件                     |
+| Node tests                  | 99/99 通过（2026-07-26 复验） |
+| TypeScript                  | 通过                          |
+| Vite production build       | 通过                          |
+| `cargo check`               | 通过                          |
+| Rust `cargo test --lib`     | 47/47 通过（2026-07-26 复验） |
+| 任务路径 `git diff --check` | 通过                          |
+| 安装版数据库只读检查        | `PRAGMA quick_check=ok`       |
 
 ### 5.2 VCP
 
@@ -410,18 +410,20 @@ D:\deepreader-backup-20260717-235801\deepreader
 
 ### 8.1 DeepReader 全部共读测试
 
+必须在 `packages/app` 下运行：测试用 `@/` alias 和无扩展名相对 import，需要 `tsx` 解析
+tsconfig `paths`，而 `tsx` 只装在 `packages/app`。在仓库根目录跑裸 `node --test` 会全部
+加载失败（`ERR_MODULE_NOT_FOUND`），那是解析器缺失，不是断言失败。
+
 ```powershell
-Set-Location D:\deepreader-src
-$tests = Get-ChildItem packages/app/src -Recurse -File -Filter '*co-reading*.test.ts' |
-  ForEach-Object { $_.FullName }
-node --test $tests
+Set-Location D:\deepreader-src\packages\app
+pnpm test              # 全部测试
+pnpm run test:co-reading   # 仅共读相关
 ```
 
-预期：
+预期（2026-07-26 实测）：
 
 ```text
-57 tests
-57 pass
+99 pass
 0 fail
 ```
 
