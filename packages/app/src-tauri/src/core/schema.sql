@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS book_notes (
     style TEXT,                            -- 高亮样式: highlight|underline|squiggly
     color TEXT,                            -- 颜色: red|yellow|green|blue|violet
     author TEXT NOT NULL DEFAULT 'human',  -- 标注作者: human|ai
+    source_note_id TEXT,                   -- 手动 AI 书评关联的人类下划线
     note TEXT NOT NULL,                    -- 用户笔记内容
     context_before TEXT,                   -- 前文上下文
     context_after TEXT,                    -- 后文上下文
@@ -126,6 +127,8 @@ CREATE INDEX IF NOT EXISTS idx_book_notes_book_id ON book_notes(book_id);
 CREATE INDEX IF NOT EXISTS idx_book_notes_type ON book_notes(type);
 CREATE INDEX IF NOT EXISTS idx_book_notes_created_at ON book_notes(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_book_notes_cfi ON book_notes(cfi);
+-- source_note_id is added to existing databases by run_migrations();
+-- its partial unique index is created there after the column exists.
 
 -- AI 共读设置 - 每本书独立控制
 CREATE TABLE IF NOT EXISTS co_reading_settings (
@@ -145,6 +148,7 @@ CREATE TABLE IF NOT EXISTS co_reading_blocks (
     id TEXT PRIMARY KEY NOT NULL,
     book_id TEXT NOT NULL,
     block_key TEXT NOT NULL,
+    focus_key TEXT NOT NULL DEFAULT '',
     section_index INTEGER NOT NULL,
     section_label TEXT NOT NULL DEFAULT '',
     cfi TEXT NOT NULL,
@@ -234,6 +238,21 @@ CREATE INDEX IF NOT EXISTS idx_co_reading_footprints_task_status
     ON co_reading_footprints(task_id, status, section_index);
 CREATE INDEX IF NOT EXISTS idx_co_reading_footprints_annotation
     ON co_reading_footprints(annotation_id);
+
+-- Agent diary source ledger. source_key is a co-reading source identity, not source_note_id.
+CREATE TABLE IF NOT EXISTS co_reading_diary_entries (
+    id TEXT PRIMARY KEY NOT NULL,
+    book_id TEXT NOT NULL,
+    source_kind TEXT NOT NULL CHECK (source_kind IN ('ordinary', 'range')),
+    source_key TEXT NOT NULL,
+    written_at INTEGER NOT NULL,
+    diary_id TEXT NOT NULL,
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+    UNIQUE (book_id, source_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_co_reading_diary_entries_book
+    ON co_reading_diary_entries(book_id, written_at DESC);
 
 -- 技能库表 - 存储 AI 技能的标准操作流程
 CREATE TABLE IF NOT EXISTS skills (
