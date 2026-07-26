@@ -39,12 +39,37 @@ export const CO_READING_PERCENTAGE_PRESETS = [
   { label: "全书", startPercent: 0, endPercent: 100 },
 ] as const;
 
+/** Counts code points without materialising an array for whole-chapter text. */
 export function countUnicodeCharacters(text: string): number {
-  return Array.from(text).length;
+  let count = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length) {
+      const next = text.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) index += 1;
+    }
+    count += 1;
+  }
+  return count;
 }
 
+/** Walks code points in place instead of allocating array + slice + join per call. */
 export function unicodeOffsetToUtf16(text: string, offset: number): number {
-  return Array.from(text).slice(0, Math.max(0, offset)).join("").length;
+  const target = Math.max(0, offset);
+  if (target === 0) return 0;
+  let seen = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    let width = 1;
+    if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length) {
+      const next = text.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) width = 2;
+    }
+    seen += 1;
+    index += width - 1;
+    if (seen === target) return index + 1;
+  }
+  return text.length;
 }
 
 export function clipCharacterRange(

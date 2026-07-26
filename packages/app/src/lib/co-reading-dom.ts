@@ -117,11 +117,16 @@ export function extractVisibleCoReadingBlocks(
   if (!doc) return [];
   const content = view.renderer.getContents().find((item) => item.doc === doc);
   if (content?.index == null) return [];
-  const startCfi = view.getCFI(content.index, visibleRange.cloneRange());
+  // Deriving the focus CFI walks the DOM, so only pay for it when this call owns the focus key.
   const focusKey =
     focusKeyOverride ??
     md5(
-      `${bookId}:${content.index}:${view.renderer.page}:${view.renderer.start}:${view.renderer.end}:${startCfi}`
+      `${bookId}:${content.index}:${view.renderer.page}:${
+        view.renderer.start
+      }:${view.renderer.end}:${view.getCFI(
+        content.index,
+        visibleRange.cloneRange()
+      )}`
     );
 
   const blocks: CoReadingBlockUpsert[] = [];
@@ -319,6 +324,13 @@ export function extractDocumentCoReadingBlocks(
     documentText,
     charBoundary?.end ?? countUnicodeCharacters(documentText)
   );
+  // One shared node -> document offset index; a per-element scan made this O(elements x nodes).
+  const documentSegmentStarts = new Map<Text, number>();
+  for (const segment of documentSegments.segments) {
+    if (!documentSegmentStarts.has(segment.node)) {
+      documentSegmentStarts.set(segment.node, segment.start);
+    }
+  }
   let elementStart = 0;
   const elements = Array.from(doc.querySelectorAll(BLOCK_SELECTOR)).filter(
     (element) => !element.parentElement?.closest(BLOCK_SELECTOR)
@@ -326,10 +338,9 @@ export function extractDocumentCoReadingBlocks(
   for (const element of elements) {
     const { text, segments } = textSegments(element);
     if (!text.trim()) continue;
+    const firstNode = segments[0]?.node;
     elementStart =
-      documentSegments.segments.find(
-        (segment) => segment.node === segments[0]?.node
-      )?.start ?? 0;
+      (firstNode ? documentSegmentStarts.get(firstNode) : undefined) ?? 0;
     for (const offsets of splitTextOffsets(text)) {
       const clipped = clipCharacterRange(
         elementStart + offsets.start,
