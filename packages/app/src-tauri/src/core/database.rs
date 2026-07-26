@@ -50,7 +50,25 @@ pub async fn initialize(app_handle: &AppHandle) -> Result<SqlitePool, Box<dyn st
     // 每次启动都同步 default-skills.json，按名称 upsert
     sync_default_skills(&pool).await?;
 
+    refresh_query_planner_stats(&pool).await;
+
     Ok(pool)
+}
+
+/// 刷新查询规划器统计（sqlite_stat1）。
+///
+/// 没有统计时 SQLite 只能用默认基数猜测，会把高选择性的等值索引判成和
+/// 低选择性索引等价，从而挑错索引：get_diary_sources 里按 annotation_id
+/// 反查文本块的相关子查询会退化成扫 book_id 分区。analysis_limit 给
+/// ANALYZE 设上界，保证大库启动也不会卡住；失败不应阻断启动。
+pub(crate) async fn refresh_query_planner_stats(pool: &SqlitePool) {
+    if let Err(err) = sqlx::query("PRAGMA analysis_limit=400").execute(pool).await {
+        eprintln!("Skipped query planner stats (analysis_limit): {err}");
+        return;
+    }
+    if let Err(err) = sqlx::query("PRAGMA optimize").execute(pool).await {
+        eprintln!("Skipped query planner stats (optimize): {err}");
+    }
 }
 
 /// 运行增量数据库迁移（不破坏已有数据）
@@ -325,8 +343,138 @@ async fn sync_default_skills(pool: &SqlitePool) -> Result<(), Box<dyn std::error
 
 #[cfg(test)]
 mod tests {
-    use super::{run_migrations, RANGE_REQUEST_BUDGET_MIGRATION};
+    use super::{refresh_query_planner_stats, run_migrations, RANGE_REQUEST_BUDGET_MIGRATION};
     use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn schema_pool() -> sqlx::SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("create in-memory database");
+        sqlx::query(include_str!("./schema.sql"))
+            .execute(&pool)
+            .await
+            .expect("initialize schema");
+        pool
+    }
+
+    /// EXPLAIN QUERY PLAN 的列是 (id, parent, notused, detail)；计划文本只在
+    /// `detail`（第 3 列）。逐行返回而不是拼成一个字符串，否则某一行的真实
+    /// 全表扫描会被另一行的 "USING INDEX" 掩盖，断言就变成永真。
+    async fn query_plan(pool: &sqlx::SqlitePool, sql: &str) -> Vec<String> {
+        use sqlx::Row;
+        sqlx::query(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .fetch_all(pool)
+            .await
+            .expect("explain query plan")
+            .iter()
+            .map(|row| row.get::<String, _>(3))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn hot_path_queries_use_indexes_instead_of_table_scans() {
+        let pool = schema_pool().await;
+
+        // 每条断言对应一个真实 query，见 schema.sql 中的索引注释。
+        let cases = [
+            "SELECT * FROM book_notes WHERE book_id = 'b' ORDER BY created_at ASC",
+            "SELECT id FROM threads WHERE book_id IS 'b' ORDER BY updated_at DESC LIMIT 1",
+            "SELECT id FROM threads ORDER BY updated_at DESC",
+            "SELECT * FROM reading_sessions WHERE book_id = 'b' ORDER BY started_at DESC",
+            "SELECT * FROM notes WHERE book_id = 'b' ORDER BY updated_at DESC LIMIT 50 OFFSET 0",
+            "SELECT * FROM co_reading_blocks WHERE book_id = 'b' ORDER BY updated_at DESC LIMIT 5",
+            "SELECT * FROM co_reading_range_tasks WHERE book_id = 'b' ORDER BY created_at DESC",
+            "SELECT * FROM co_reading_footprints WHERE book_id = 'b' ORDER BY section_index, created_at",
+            "SELECT * FROM user_memories WHERE category = 'c' ORDER BY updated_at DESC LIMIT 50 OFFSET 0",
+            "SELECT * FROM books ORDER BY created_at DESC",
+        ];
+
+        for sql in cases {
+            let plan = query_plan(&pool, sql).await;
+            for row in &plan {
+                assert!(
+                    !(row.starts_with("SCAN") && !row.contains("USING INDEX")),
+                    "query still scans without an index: {sql}\nrow: {row}\nplan: {plan:?}"
+                );
+                assert!(
+                    !row.contains("USE TEMP B-TREE FOR ORDER BY"),
+                    "query still sorts in a temp b-tree: {sql}\nplan: {plan:?}"
+                );
+            }
+        }
+    }
+
+    /// 反向守卫：证明上面的断言真能抓到裸全表扫描，而不是永真式。
+    /// dwell_ms 没有任何索引，这条查询必然产出 "SCAN co_reading_blocks"。
+    #[tokio::test]
+    async fn plan_assertion_actually_rejects_a_bare_table_scan() {
+        let pool = schema_pool().await;
+        let plan = query_plan(&pool, "SELECT * FROM co_reading_blocks WHERE dwell_ms = 42").await;
+        assert!(
+            plan.iter()
+                .any(|row| row.starts_with("SCAN") && !row.contains("USING INDEX")),
+            "expected a bare table scan for an unindexed column\nplan: {plan:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn planner_stats_make_annotation_reverse_lookup_use_its_index() {
+        let pool = schema_pool().await;
+        // get_diary_sources 的相关子查询：按 annotation_id 反查文本块。
+        let sql = "SELECT block.block_key FROM co_reading_blocks block \
+             WHERE block.book_id = 'b1' AND block.annotation_id = 'note-1' \
+             ORDER BY block.updated_at DESC, block.id ASC LIMIT 1";
+
+        sqlx::query(
+            "INSERT INTO books (id, title, author, format, file_path, file_size, language, created_at, updated_at) VALUES ('b1', 'B', 'A', 'EPUB', 'b.epub', 1, 'zh', 1, 1)",
+        )
+        .execute(&pool)
+        .await
+        .expect("insert book");
+        for i in 0..600 {
+            // annotation_id 有指向 book_notes 的外键，先建父行再建文本块。
+            sqlx::query(
+                "INSERT INTO book_notes (id, book_id, type, cfi, note, created_at, updated_at) VALUES (?, 'b1', 'annotation', 'cfi', 'n', ?, ?)",
+            )
+            .bind(format!("note-{i}"))
+            .bind(i)
+            .bind(i)
+            .execute(&pool)
+            .await
+            .expect("insert note");
+            sqlx::query(
+                "INSERT INTO co_reading_blocks (id, book_id, block_key, section_index, cfi, text, text_hash, status, annotation_id, created_at, updated_at) VALUES (?, 'b1', ?, 0, 'cfi', 't', 'h', 'annotated', ?, ?, ?)",
+            )
+            .bind(format!("bl-{i}"))
+            .bind(format!("k-{i}"))
+            .bind(format!("note-{i}"))
+            .bind(i)
+            .bind(i)
+            .execute(&pool)
+            .await
+            .expect("insert block");
+        }
+
+        // 没有统计时规划器会误选 book_id 前缀索引，退化成扫整本书的文本块。
+        let before = query_plan(&pool, sql).await;
+        refresh_query_planner_stats(&pool).await;
+        let after = query_plan(&pool, sql).await;
+
+        let stat_rows: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE name='sqlite_stat1'")
+                .fetch_one(&pool)
+                .await
+                .expect("read stat table presence");
+        assert_eq!(stat_rows, 1, "PRAGMA optimize must populate sqlite_stat1");
+        assert!(
+            after
+                .iter()
+                .any(|row| row.contains("idx_co_reading_blocks_annotation")),
+            "annotation lookup must use its index after ANALYZE\nbefore: {before:?}\nafter: {after:?}"
+        );
+    }
 
     #[tokio::test]
     async fn migration_adds_book_note_author_without_changing_existing_rows() {

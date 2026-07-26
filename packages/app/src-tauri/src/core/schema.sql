@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS reading_sessions (
 CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
 CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);
 CREATE INDEX IF NOT EXISTS idx_books_updated_at ON books(updated_at DESC);
+-- get_books / get_books_with_status 支持 sort_by=createdAt
+CREATE INDEX IF NOT EXISTS idx_books_created_at ON books(created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_book_status_status ON book_status(status);
 CREATE INDEX IF NOT EXISTS idx_book_status_progress ON book_status(progress_current, progress_total);
@@ -66,10 +68,17 @@ CREATE INDEX IF NOT EXISTS idx_book_status_last_read ON book_status(last_read_at
 CREATE INDEX IF NOT EXISTS idx_book_status_updated_at ON book_status(updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_threads_book_id ON threads(book_id);
+-- get_threads_by_book / get_latest_thread：WHERE book_id IS ? ORDER BY updated_at DESC
+CREATE INDEX IF NOT EXISTS idx_threads_book_updated ON threads(book_id, updated_at DESC);
+-- get_all_threads：ORDER BY updated_at DESC
+CREATE INDEX IF NOT EXISTS idx_threads_updated_at ON threads(updated_at DESC);
 
 -- reading_sessions 表的索引
 CREATE INDEX IF NOT EXISTS idx_reading_sessions_book_id ON reading_sessions(book_id);
 CREATE INDEX IF NOT EXISTS idx_reading_sessions_started_at ON reading_sessions(started_at DESC);
+-- get_reading_sessions_by_book / get_active_reading_session：book_id 过滤 + started_at 排序
+CREATE INDEX IF NOT EXISTS idx_reading_sessions_book_started
+    ON reading_sessions(book_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reading_sessions_date ON reading_sessions(DATE(started_at/1000, 'unixepoch'));
 CREATE INDEX IF NOT EXISTS idx_reading_sessions_book_date ON reading_sessions(book_id, DATE(started_at/1000, 'unixepoch'));
 
@@ -99,6 +108,8 @@ CREATE TABLE IF NOT EXISTS notes (
 -- notes 表的索引
 CREATE INDEX IF NOT EXISTS idx_notes_book_id ON notes(book_id);
 CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at DESC);
+-- get_notes：WHERE book_id = ? ORDER BY updated_at DESC LIMIT/OFFSET
+CREATE INDEX IF NOT EXISTS idx_notes_book_updated ON notes(book_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at DESC);
 
 -- BookNote 表 - 存储书籍标注、书签、摘录等
@@ -127,6 +138,8 @@ CREATE INDEX IF NOT EXISTS idx_book_notes_book_id ON book_notes(book_id);
 CREATE INDEX IF NOT EXISTS idx_book_notes_type ON book_notes(type);
 CREATE INDEX IF NOT EXISTS idx_book_notes_created_at ON book_notes(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_book_notes_cfi ON book_notes(cfi);
+-- get_book_notes：WHERE book_id = ?1 ORDER BY created_at ASC
+CREATE INDEX IF NOT EXISTS idx_book_notes_book_created ON book_notes(book_id, created_at);
 -- source_note_id is added to existing databases by run_migrations();
 -- its partial unique index is created there after the column exists.
 
@@ -172,6 +185,12 @@ CREATE INDEX IF NOT EXISTS idx_co_reading_blocks_book_status
     ON co_reading_blocks(book_id, status, unlocked_at);
 CREATE INDEX IF NOT EXISTS idx_co_reading_blocks_updated_at
     ON co_reading_blocks(updated_at);
+-- get_snapshot：WHERE book_id = ? ORDER BY updated_at DESC LIMIT ?
+CREATE INDEX IF NOT EXISTS idx_co_reading_blocks_book_updated
+    ON co_reading_blocks(book_id, updated_at DESC);
+-- get_diary_sources 的相关子查询按 annotation_id 反查文本块（与 footprints 对称）
+CREATE INDEX IF NOT EXISTS idx_co_reading_blocks_annotation
+    ON co_reading_blocks(annotation_id);
 
 -- Nova 自主范围阅读任务
 CREATE TABLE IF NOT EXISTS co_reading_range_tasks (
@@ -206,6 +225,9 @@ CREATE TABLE IF NOT EXISTS co_reading_range_tasks (
 
 CREATE INDEX IF NOT EXISTS idx_co_reading_range_tasks_book_status
     ON co_reading_range_tasks(book_id, status, updated_at DESC);
+-- list_range_tasks：WHERE book_id = ? ORDER BY created_at DESC
+CREATE INDEX IF NOT EXISTS idx_co_reading_range_tasks_book_created
+    ON co_reading_range_tasks(book_id, created_at DESC);
 
 -- Nova 阅读地图足迹；任务历史独立于普通跟读账本
 CREATE TABLE IF NOT EXISTS co_reading_footprints (
@@ -234,6 +256,9 @@ CREATE TABLE IF NOT EXISTS co_reading_footprints (
 
 CREATE INDEX IF NOT EXISTS idx_co_reading_footprints_book_section
     ON co_reading_footprints(book_id, section_index, updated_at);
+-- list_range_footprints：WHERE book_id = ? ORDER BY section_index, created_at
+CREATE INDEX IF NOT EXISTS idx_co_reading_footprints_book_created
+    ON co_reading_footprints(book_id, section_index, created_at);
 CREATE INDEX IF NOT EXISTS idx_co_reading_footprints_task_status
     ON co_reading_footprints(task_id, status, section_index);
 CREATE INDEX IF NOT EXISTS idx_co_reading_footprints_annotation
@@ -294,3 +319,6 @@ CREATE INDEX IF NOT EXISTS idx_memories_category ON user_memories(category);
 CREATE INDEX IF NOT EXISTS idx_memories_book_id ON user_memories(book_id);
 CREATE INDEX IF NOT EXISTS idx_memories_key ON user_memories(key);
 CREATE INDEX IF NOT EXISTS idx_memories_access ON user_memories(access_count DESC);
+-- get_memories：WHERE category = ? ORDER BY updated_at DESC LIMIT/OFFSET
+CREATE INDEX IF NOT EXISTS idx_memories_category_updated
+    ON user_memories(category, updated_at DESC);
