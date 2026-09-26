@@ -5,6 +5,7 @@ import {
   buildPageState,
   decidePageGate,
   extractJevAnswers,
+  isPassageHard,
   normalizeJevSettings,
   pickNovaReaction,
 } from "./jev-rules";
@@ -76,4 +77,10 @@ test("normalizeJevSettings keeps features off by default", () => {
 test("buildPageState prefixes the section and clips long pages", () => {
   const state = buildPageState([{ text: "a".repeat(10), sectionLabel: "第一章" }], 5);
   assert.equal(state, "章节：第一章\n\naaaaa…");
+});
+
+test("isPassageHard reads the noul answer and tolerates missing data", () => {
+  assert.equal(isPassageHard({ hard_to_follow: { noul: 0.8 } }), true);
+  assert.equal(isPassageHard({ hard_to_follow: { probability: 0.2 } }), false);
+  assert.equal(isPassageHard({}), null);
 });

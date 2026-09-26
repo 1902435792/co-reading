@@ -59,7 +59,7 @@ export const useAnnotator = ({ bookId }: UseAnnotatorProps) => {
   );
 
   const popupPadding = 10;
-  const annotPopupWidth = Math.min(globalViewSettings?.vertical ? 320 : 280, window.innerWidth - 2 * popupPadding);
+  const annotPopupWidth = Math.min(globalViewSettings?.vertical ? 320 : 340, window.innerWidth - 2 * popupPadding);
   const annotPopupHeight = 36;
 
   // Popup 相关函数

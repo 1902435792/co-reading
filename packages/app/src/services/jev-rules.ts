@@ -212,3 +212,20 @@ export function pickNovaReaction(answers: Record<string, JevAnswer>, minConfiden
   if (!option || choiceConfidence(answer) < minConfidence) return null;
   return option;
 }
+
+// ---------- 卡住探头 ----------
+
+export const PASSAGE_DIFFICULTY_QUESTIONS: Record<string, JevQuestion> = {
+  hard_to_follow: {
+    type: "noul",
+    instructions:
+      "普通读者读这一页时，是否容易卡住、需要别人帮忙解释？例如概念密集、论证跳跃、生僻典故、复杂句式或人物关系混乱。",
+    criteria: { true: "比较难懂，值得解释", false: "通顺易懂，不需要解释" },
+  },
+};
+
+/** 返回 null 表示 Jev 没给出可用的判断。 */
+export function isPassageHard(answers: Record<string, JevAnswer>, threshold = 0.5): boolean | null {
+  const value = noulOf(answers.hard_to_follow);
+  return value === null ? null : value >= threshold;
+}

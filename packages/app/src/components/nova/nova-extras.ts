@@ -8,12 +8,15 @@ export interface NovaExtras {
   lateNight: boolean;
   /** 书架书卡上显示 Nova 的一句话。 */
   shelfLines: boolean;
+  /** 同一页停留很久时问要不要帮忙（会打扰，默认关闭）。 */
+  stuckHint: boolean;
 }
 
 export const DEFAULT_NOVA_EXTRAS: NovaExtras = {
   sessionSummary: true,
   lateNight: true,
   shelfLines: true,
+  stuckHint: false,
 };
 
 const STORAGE_KEY = "deepreader:nova-extras";
@@ -27,6 +30,7 @@ export function normalizeNovaExtras(value: unknown): NovaExtras {
     sessionSummary: pick("sessionSummary"),
     lateNight: pick("lateNight"),
     shelfLines: pick("shelfLines"),
+    stuckHint: pick("stuckHint"),
   };
 }
 

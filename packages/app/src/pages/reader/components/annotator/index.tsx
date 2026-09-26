@@ -1,4 +1,6 @@
 import { openReadingFootprintForAnnotation } from "@/components/side-chat/co-reading-backlink";
+import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
+import { askNova } from "@/components/nova/nova-bus";
 import { HIGHLIGHT_COLOR_HEX } from "@/services/constants";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useLayoutStore } from "@/store/layout-store";
@@ -16,6 +18,10 @@ import { useTextSelector } from "../../hooks/use-text-selector";
 import { useReaderStore, useReaderStoreApi } from "../reader-provider";
 import AnnotationPopup from "./annotation-popup";
 import AskAIPopup from "./ask-ai-popup";
+
+function NovaIcon({ size = 16 }: { size?: number }) {
+  return <img src={NOVA_STATIC_AVATAR} alt="" width={size} height={size} className="rounded-full" />;
+}
 
 const Annotator: React.FC = () => {
   const { settings } = useAppSettingsStore();
@@ -154,9 +160,17 @@ const Annotator: React.FC = () => {
   }, [showAnnotPopup, showAskAIPopup]);
 
   const selectionAnnotated = selection?.annotated;
+  // 问 Nova：Nova 在场时把选中的文字交给她（回答显示在 Nova 气泡里），否则退回到侧栏解释。
+  const handleAskNova = () => {
+    const text = selection?.text?.trim();
+    if (!text) return;
+    if (askNova(bookId, { text })) handleDismissPopup();
+    else handleExplain();
+  };
   const buttons = [
     { label: "复制", Icon: FiCopy, onClick: handleCopy },
     { label: "解释", Icon: FiHelpCircle, onClick: handleExplain },
+    { label: "问Nova", Icon: NovaIcon, onClick: handleAskNova },
     { label: "询问AI", Icon: FiMessageCircle, onClick: handleAskAI },
     {
       label: undefined,

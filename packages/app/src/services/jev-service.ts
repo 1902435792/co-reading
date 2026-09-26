@@ -10,11 +10,13 @@ import {
   NOVA_REACTION_QUESTIONS,
   type NovaReactionOption,
   PAGE_GATE_QUESTIONS,
+  PASSAGE_DIFFICULTY_QUESTIONS,
   buildJevRequest,
   buildPageState,
   buildReactionState,
   decidePageGate,
   extractJevAnswers,
+  isPassageHard,
   jevEndpointNeedsUrl,
   normalizeJevSettings,
   pickNovaReaction,
@@ -204,6 +206,21 @@ export async function classifyNovaReactionWithJev(quote: string, comment: string
       settings,
     });
     return pickNovaReaction(answers);
+  } catch {
+    return null;
+  }
+}
+
+/** 设置页的「测试」按钮：用一段示例文字同时测两个功能。 */
+/**
+ * 卡住探头：判断当前页是否难懂。返回 null 表示没法判断（未配置 Jev 或请求失败），调用方自行决定。
+ */
+export async function judgePassageDifficultyWithJev(text: string): Promise<boolean | null> {
+  const settings = getJevSettings();
+  if (!text.trim() || !isJevConfigured(settings)) return null;
+  try {
+    const answers = await requestJevDecisions(buildPageState([{ text }]), PASSAGE_DIFFICULTY_QUESTIONS, { settings });
+    return isPassageHard(answers);
   } catch {
     return null;
   }

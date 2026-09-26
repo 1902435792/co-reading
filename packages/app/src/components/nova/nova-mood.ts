@@ -4,6 +4,9 @@ import type { NovaMood } from "./nova-lottie";
 /** 多久没有翻页后 Nova 开始打盹。 */
 export const NOVA_SLEEP_AFTER_MS = 3 * 60_000;
 
+/** 同一页停留多久后，「卡住探头」问一句要不要帮忙。 */
+export const NOVA_STUCK_AFTER_MS = 90_000;
+
 export interface NovaMoodInput {
   status: CoReadingStatus;
   isProcessing: boolean;
@@ -28,7 +31,7 @@ export function getAnnotationReaction(note: string): NovaMood {
 }
 
 export const NOVA_LINES: Record<
-  "greet" | "thinking" | "silent" | "error" | "sleep" | "paused" | "pet" | "lateGreet" | "lateRest",
+  "greet" | "thinking" | "silent" | "error" | "sleep" | "paused" | "pet" | "lateGreet" | "lateRest" | "stuck",
   readonly string[]
 > = {
   greet: ["一起读《{title}》吧！", "客官请坐～今天读到哪儿啦？", "Nova 已就位，开始共读！"],
@@ -40,6 +43,7 @@ export const NOVA_LINES: Record<
   pet: ["嘿嘿～", "别闹，我在认真读呢！", "再摸就要收费啦（小声）", "最喜欢一起读书了！", "Nova 充电完毕！"],
   lateGreet: ["这么晚还在读呀，Nova 陪你～", "夜读模式开启，别忘了喝口水", "深夜的书最好看，但也要早点睡哦"],
   lateRest: ["已经很晚啦，读完这一节就休息吧？", "眼睛累了吗？闭眼歇一分钟～", "Nova 有点困了…你也早点睡呀"],
+  stuck: ["这页有点绕？要我帮你拆一下吗", "在这儿停了好一会儿，是不是卡住了？", "这段信息量有点大，需要我讲讲吗？"],
 };
 
 export function pickNovaLine(kind: keyof typeof NOVA_LINES, seed: number, vars: Record<string, string> = {}): string {

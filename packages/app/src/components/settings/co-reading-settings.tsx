@@ -200,9 +200,20 @@ export default function CoReadingSettings() {
             </span>
             <Switch checked={novaExtras.shelfLines} onCheckedChange={(value) => updateNovaExtras({ shelfLines: value })} />
           </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>
+              卡住时探头
+              <span className="block text-muted-foreground text-xs">
+                同一页停留 1.5 分钟以上，Nova 会问要不要帮你拆解；配置了 Jev 时先判断这页是否真的难懂。默认关闭
+              </span>
+            </span>
+            <Switch checked={novaExtras.stuckHint} onCheckedChange={(value) => updateNovaExtras({ stuckHint: value })} />
+          </label>
         </div>
         <p className="mt-3 text-muted-foreground text-xs">
           沉浸阅读：点阅读页顶栏的 ⤢ 按钮、按 Z 或右键 Nova 进入，只留正文和小头像 Nova；按 Esc 退出。
+          <br />
+          问 Nova：选中文字后点弹条里的「问Nova」、或选中后直接点 Nova、或把文字拖到 Nova 身上，可以让她解释、反驳、联想或总结。
         </p>
       </section>
     </div>

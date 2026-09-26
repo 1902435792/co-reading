@@ -7,7 +7,9 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { useReaderStore } from "@/pages/reader/components/reader-provider";
+import { useReaderStore, useReaderStoreApi } from "@/pages/reader/components/reader-provider";
+import { resolveCoReadingAgentModel } from "@/services/co-reading-agent-request";
+import { iframeService } from "@/services/iframe-service";
 import { useImmersiveStore } from "@/store/immersive-store";
 import { SessionState } from "@/types/reading-session";
 import type { BookNote } from "@/types/book";
@@ -15,24 +17,47 @@ import type { CoReadingSourceTarget } from "@/types/co-reading";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "framer-motion";
 import { ChevronRight, Minus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { classifyNovaReactionWithJev } from "@/services/jev-service";
+import { classifyNovaReactionWithJev, judgePassageDifficultyWithJev } from "@/services/jev-service";
+import { generateText } from "ai";
 import { NOVA_IMAGE_BY_NAME, NOVA_LATE_NIGHT_IMAGE, NOVA_STATIC_AVATAR, pickNovaImage } from "./nova-assets";
+import { NOVA_ASK_ACTIONS, NOVA_ASK_MENU, type NovaAskAction, buildNovaAskPrompt, cleanNovaAnswer } from "./nova-ask";
+import { type NovaAskRequest, registerNovaAsker } from "./nova-bus";
 import { setNovaCompanionMode, useNovaCompanionMode } from "./nova-companion-mode";
 import { useNovaExtras } from "./nova-extras";
 import { NOVA_ONE_SHOT_MOODS, type NovaMood, buildNovaAnimation } from "./nova-lottie";
 import { NovaLottiePlayer } from "./nova-lottie-player";
-import { deriveNovaMood, getAnnotationReaction, pickNovaLine, shortenNovaText } from "./nova-mood";
+import {
+  NOVA_SLEEP_AFTER_MS,
+  NOVA_STUCK_AFTER_MS,
+  deriveNovaMood,
+  getAnnotationReaction,
+  pickNovaLine,
+  shortenNovaText,
+} from "./nova-mood";
 import { activeMsFromStats, formatActiveDuration, isLateNight } from "./nova-moments";
 
 interface NovaBubble {
   id: number;
-  kind: "annotation" | "info" | "error";
+  kind: "annotation" | "info" | "error" | "answer" | "menu";
+  /** 气泡顶部的小标题，不填时按 kind 生成。 */
+  title?: string;
+  /** 气泡底部的按钮（边注气泡不用）。 */
+  actions?: NovaBubbleAction[];
   text: string;
   quote?: string;
   target?: CoReadingSourceTarget;
   /** 自动隐藏的毫秒数；0 表示一直显示，直到被替换。 */
   ttl: number;
 }
+
+interface NovaBubbleAction {
+  label: string;
+  onClick: () => void;
+  primary?: boolean;
+}
+
+/** 读者主动问 Nova 时，最长等多久。 */
+const NOVA_ASK_TIMEOUT_MS = 90_000;
 
 interface NovaReaction {
   mood: NovaMood;
@@ -110,6 +135,7 @@ function NovaCompanionInner({
   const location = useReaderStore((state) => state.location);
   const bookTitle = useReaderStore((state) => state.bookData?.book?.title) ?? "这本书";
   const setPendingCoReadingSource = useReaderStore((state) => state.setPendingCoReadingSource);
+  const storeApi = useReaderStoreApi();
   const reducedMotion = useReducedMotion() ?? false;
 
   const boundsRef = useRef<HTMLDivElement>(null);
@@ -128,6 +154,7 @@ function NovaCompanionInner({
   const [lastActivityAt, setLastActivityAt] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
   const [pageVisible, setPageVisible] = useState(() => !document.hidden);
+  const [dragOver, setDragOver] = useState(false);
   const seedRef = useRef(Math.floor(Math.random() * 1000));
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
@@ -142,8 +169,14 @@ function NovaCompanionInner({
   const say = useCallback(
     (next: Omit<NovaBubble, "id">) => {
       bubbleIdRef.current += 1;
-      setBubble({ ...next, id: bubbleIdRef.current });
-      if (next.kind === "annotation") setLastAnnotation({ ...next, id: bubbleIdRef.current });
+      const id = bubbleIdRef.current;
+      // 读者主动问出来的回答和菜单不被普通台词顶掉；新边注和出错照常替换。
+      setBubble((current) =>
+        current && (current.kind === "answer" || current.kind === "menu") && next.kind === "info"
+          ? current
+          : { ...next, id },
+      );
+      if (next.kind === "annotation") setLastAnnotation({ ...next, id });
       if (collapsed && next.kind !== "info") setUnread(true);
     },
     [collapsed],
@@ -221,6 +254,35 @@ function NovaCompanionInner({
       collapsedBeforeImmersiveRef.current = null;
     }
   }, [immersive]);
+
+  // 卡住探头（默认关闭）：同一页停留较久时问一句要不要帮忙；配置了 Jev 时先判断这页是不是真的难懂。
+  const stuckAskedRef = useRef<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 每次时钟跳动检查一次
+  useEffect(() => {
+    if (!extras.stuckHint || collapsed || bubble || runtime.isProcessing) return;
+    if (!isTabVisible || !pageVisible || !document.hasFocus()) return;
+    const idle = now - lastActivityAt;
+    if (idle < NOVA_STUCK_AFTER_MS || idle >= NOVA_SLEEP_AFTER_MS) return;
+    const key = storeApi.getState().progress?.location;
+    if (!key || stuckAskedRef.current === key) return;
+    stuckAskedRef.current = key;
+    const text = readVisibleText();
+    if (text.length < 80) return;
+    void judgePassageDifficultyWithJev(text).then((hard) => {
+      if (hard === false || storeApi.getState().progress?.location !== key) return;
+      react("thinking", 3_000);
+      say({
+        kind: "info",
+        title: "Nova · 卡住了？",
+        text: pickNovaLine("stuck", nextSeed()),
+        ttl: 20_000,
+        actions: [
+          { label: "好呀，拆一下", primary: true, onClick: () => void runAsk(text, "unstuck") },
+          { label: "不用", onClick: () => setBubble(null) },
+        ],
+      });
+    });
+  }, [now]);
 
   // 新边注：打开书之前已有的边注不播报。
   const knownNoteIdsRef = useRef<Set<string> | null>(null);
@@ -321,6 +383,12 @@ function NovaCompanionInner({
 
   const onPet = () => {
     if (draggedRef.current) return;
+    // 选中了正文再点 Nova：把选中的文字交给她。
+    const selected = readSelectedText();
+    if (selected) {
+      openAskMenu(selected);
+      return;
+    }
     if (collapsed) {
       setCollapsed(false);
       return;
@@ -369,6 +437,127 @@ function NovaCompanionInner({
     say({ kind: "info", text: `这次已经一起读了 ${formatActiveDuration(activeMs)}～`, ttl: 5_000 });
   };
 
+  // ---------- 问 Nova ----------
+  const askAbortRef = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      const controller = askAbortRef.current;
+      askAbortRef.current = null;
+      controller?.abort();
+    },
+    [],
+  );
+  const runAsk = async (text: string, action: NovaAskAction) => {
+    askAbortRef.current?.abort();
+    const controller = new AbortController();
+    askAbortRef.current = controller;
+    const meta = NOVA_ASK_ACTIONS[action];
+    const title = `Nova · ${meta.label}`;
+    const quote = shortenNovaText(text, 70);
+    setCollapsed(false);
+    react("thinking", NOVA_ASK_TIMEOUT_MS);
+    say({ kind: "answer", title, text: meta.thinking, quote, ttl: 0 });
+    const timer = window.setTimeout(() => controller.abort(), NOVA_ASK_TIMEOUT_MS);
+    try {
+      const { system, prompt } = buildNovaAskPrompt({
+        action,
+        text,
+        bookTitle,
+        sectionLabel: storeApi.getState().progress?.sectionLabel,
+      });
+      const model = resolveCoReadingAgentModel(snapshotRef.current.settings);
+      const result = await generateText({
+        model,
+        system,
+        prompt,
+        maxOutputTokens: 700,
+        temperature: 0.7,
+        maxRetries: 0,
+        abortSignal: controller.signal,
+      });
+      if (askAbortRef.current !== controller) return;
+      react("talking", 4_000);
+      say({
+        kind: "answer",
+        title,
+        text: cleanNovaAnswer(result.text) || "嗯…我一时没想好怎么说。",
+        quote,
+        ttl: 0,
+        actions: [
+          { label: "去侧栏接着聊", onClick: () => iframeService.sendAskAIRequest(text, meta.instruction, bookId) },
+        ],
+      });
+    } catch (error) {
+      if (askAbortRef.current !== controller) return;
+      react("error", 3_000);
+      say({
+        kind: "error",
+        text: controller.signal.aborted
+          ? "想太久了…换个问法，或者稍后再试？"
+          : `没问成功：${shortenNovaText(error instanceof Error ? error.message : String(error))}`,
+        ttl: 10_000,
+      });
+    } finally {
+      window.clearTimeout(timer);
+      if (askAbortRef.current === controller) askAbortRef.current = null;
+    }
+  };
+  const openAskMenu = (text: string) => {
+    const clean = text.trim();
+    if (!clean) return;
+    setCollapsed(false);
+    react("pet", 1_500);
+    say({
+      kind: "menu",
+      title: "Nova · 想让我做什么？",
+      text: "",
+      quote: shortenNovaText(clean, 80),
+      ttl: 0,
+      actions: NOVA_ASK_MENU.map((action) => ({
+        label: NOVA_ASK_ACTIONS[action].label,
+        onClick: () => void runAsk(clean, action),
+      })),
+    });
+  };
+  const readSelectedText = (): string | null => {
+    const contents = storeApi.getState().view?.renderer.getContents() ?? [];
+    for (const content of contents) {
+      const text = content.doc?.getSelection()?.toString().trim();
+      if (text && text.length >= 2) return text;
+    }
+    return null;
+  };
+  const readVisibleText = (): string => {
+    const state = storeApi.getState();
+    const ranges = state.view?.renderer.getVisibleRanges?.() ?? [];
+    const text = ranges
+      .map((item) => item.range.toString())
+      .join("\n")
+      .trim();
+    return text || (state.progress?.range?.toString().trim() ?? "");
+  };
+  // 其他地方（选中文字弹条）通过 nova-bus 把文字交给 Nova。
+  const askHandlerRef = useRef<(request: NovaAskRequest) => void>(() => {});
+  askHandlerRef.current = (request) => {
+    if (request.action) void runAsk(request.text, request.action);
+    else openAskMenu(request.text);
+  };
+  useEffect(() => registerNovaAsker(bookId, (request) => askHandlerRef.current(request)), [bookId]);
+  const onDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("text/plain")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    if (!dragOver) setDragOver(true);
+  };
+  const onDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragOver(false);
+  };
+  const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setDragOver(false);
+    openAskMenu(event.dataTransfer.getData("text/plain"));
+  };
+
   const playing = isTabVisible && pageVisible;
   const fallbackAllowed = !bubble && dismissedFallbackMood !== mood;
   const sleepyLine = mood === "sleep" && fallbackAllowed ? pickNovaLine("sleep", imageSeed) : null;
@@ -408,7 +597,18 @@ function NovaCompanionInner({
           )}
         </AnimatePresence>
 
-        <div className="relative" style={{ width: avatarSize, height: avatarSize }}>
+        <div
+          className={`relative rounded-full transition-transform ${dragOver ? "scale-110 ring-4 ring-amber-300" : ""}`}
+          style={{ width: avatarSize, height: avatarSize }}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
+        >
+          {dragOver && (
+            <div className="-top-7 pointer-events-none absolute right-0 z-20 whitespace-nowrap rounded-full bg-amber-400 px-2 py-0.5 font-medium text-[11px] text-amber-950 shadow">
+              松手交给 Nova
+            </div>
+          )}
           {!collapsed && (
             <div className="-top-1 -left-1 absolute z-10 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
               <button
@@ -437,7 +637,9 @@ function NovaCompanionInner({
                 role="button"
                 tabIndex={0}
                 aria-label={collapsed ? "展开 Nova" : "摸摸 Nova"}
-                title={collapsed ? "展开 Nova · 右键更多" : "摸摸头 · 拖动可移动 · 右键更多"}
+                title={
+                  collapsed ? "展开 Nova · 右键更多" : "摸摸头 · 拖动可移动 · 右键更多\n选中文字后点我，或把文字拖给我"
+                }
                 onTap={onPet}
                 onDoubleClick={resetPosition}
                 onKeyDown={(event) => {
@@ -508,21 +710,30 @@ function NovaSpeechBubble({
       ? "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/80 dark:text-rose-100"
       : bubble.kind === "annotation"
         ? "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/80 dark:text-amber-50"
-        : "border-border bg-background text-foreground";
+        : bubble.kind === "answer"
+          ? "border-sky-300 bg-sky-50 text-sky-950 dark:border-sky-800 dark:bg-sky-950/80 dark:text-sky-50"
+          : "border-border bg-background text-foreground";
   const content = (
     <>
       <span className="mb-1 flex items-center gap-1 font-semibold text-[11px] opacity-70">
-        Nova{bubble.kind === "annotation" ? " · 新边注" : bubble.kind === "error" ? " · 出错了" : ""}
+        {bubble.title ??
+          `Nova${bubble.kind === "annotation" ? " · 新边注" : bubble.kind === "error" ? " · 出错了" : ""}`}
       </span>
       {bubble.quote && (
         <span className="mb-1.5 line-clamp-2 block border-black/15 border-l-2 pl-2 text-[11px] opacity-70 dark:border-white/25">
           {bubble.quote}
         </span>
       )}
-      <span className="line-clamp-6 block whitespace-pre-line leading-relaxed">
-        {typed}
-        {typed.length < bubble.text.length && <span className="ml-0.5 inline-block w-1 animate-pulse">▍</span>}
-      </span>
+      {bubble.text && (
+        <span
+          className={`block whitespace-pre-line leading-relaxed ${
+            bubble.kind === "answer" ? "max-h-56 overflow-y-auto pr-1" : "line-clamp-6"
+          }`}
+        >
+          {typed}
+          {typed.length < bubble.text.length && <span className="ml-0.5 inline-block w-1 animate-pulse">▍</span>}
+        </span>
+      )}
       {isAnnotation && (
         <span className="mt-1.5 flex items-center justify-end font-medium text-[11px] text-amber-700 dark:text-amber-300">
           查看原文
@@ -538,7 +749,7 @@ function NovaSpeechBubble({
       exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.95 }}
       transition={{ type: "spring", stiffness: 420, damping: 28 }}
       style={{ transformOrigin: "bottom right" }}
-      className="relative mr-6 mb-2 w-64 max-w-[70vw]"
+      className={`relative mr-6 mb-2 max-w-[70vw] ${bubble.kind === "answer" || bubble.kind === "menu" ? "w-80" : "w-64"}`}
       onPointerDownCapture={(event) => event.stopPropagation()}
     >
       <div className={`relative rounded-2xl border-2 px-3 py-2 text-xs shadow-lg ${tone}`}>
@@ -556,6 +767,24 @@ function NovaSpeechBubble({
           </button>
         ) : (
           <div className="pr-3">{content}</div>
+        )}
+        {!isAnnotation && bubble.actions && bubble.actions.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {bubble.actions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                onClick={action.onClick}
+                className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors ${
+                  action.primary
+                    ? "border-transparent bg-foreground text-background hover:opacity-90"
+                    : "border-black/15 bg-background/70 hover:bg-background dark:border-white/20"
+                }`}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
         )}
         <span aria-hidden className={`-bottom-[7px] absolute right-6 size-3 rotate-45 border-r-2 border-b-2 ${tone}`} />
       </div>
