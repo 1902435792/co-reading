@@ -27,6 +27,7 @@ function block(key: string, text: string, hash = key): CoReadingBlockUpsert {
     id: key,
     bookId: "book",
     blockKey: key,
+    focusKey: `focus:${key}`,
     sectionIndex: 0,
     sectionLabel: "第一章",
     cfi: `cfi:${key}`,

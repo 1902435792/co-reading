@@ -33,7 +33,6 @@ export const exportToObsidianTool = tool({
     fileName: z.string().min(1).describe("文件名（不含路径和扩展名），例如「系统之美-阅读笔记-20240412」"),
   }),
   execute: async ({
-    reasoning,
     content,
     fileName,
   }: {

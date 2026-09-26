@@ -18,7 +18,7 @@ import HeaderBar from "./header-bar";
 import { useReaderStore, useReaderStoreApi } from "./reader-provider";
 
 const ReaderViewerContent: React.FC = () => {
-  const bookId = useReaderStore((state) => state.bookId);
+  const bookId = useReaderStore((state) => state.bookId)!;
   const bookData = useReaderStore((state) => state.bookData);
   const config = useReaderStore((state) => state.config);
   const { settings } = useAppSettingsStore();
@@ -65,7 +65,7 @@ export default function ReaderViewer() {
   const store = useReaderStoreApi();
   useBookShortcuts();
 
-  const bookId = useReaderStore((state) => state.bookId);
+  const bookId = useReaderStore((state) => state.bookId)!;
   const bookData = useReaderStore((state) => state.bookData);
   const config = useReaderStore((state) => state.config);
   const isLoading = useReaderStore((state) => state.isLoading);

@@ -202,7 +202,8 @@ test("stale or mismatched renderer ranges are rejected without expanding a CFI a
   );
   view.resolveCFI = () => {
     resolveCalls += 1;
-    return { index: 5, anchor: () => null };
+    // 故意返回失效锚点，模拟 CFI 已经解析不到 Range 的情况。
+    return { index: 5, anchor: () => null as unknown as Range };
   };
 
   assert.deepEqual(

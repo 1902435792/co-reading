@@ -211,6 +211,8 @@ export function useChromeTabs(listeners: Listeners, options: ChromeTabsOptions =
     darkMode?: boolean;
     toolbar?: React.ReactNode;
     pinnedLeft?: React.ReactNode;
+    enableDragRegion?: boolean;
+    marginLeft?: number;
   }) {
     return <ChromeTabsWrapper {...props} ref={ref} />;
   }, []);

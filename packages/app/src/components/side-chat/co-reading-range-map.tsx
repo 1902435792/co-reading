@@ -77,7 +77,7 @@ export function CoReadingRangeMap({
     [bookData?.bookDoc]
   );
   const rangeOptions = useMemo(
-    () => buildCoReadingRangeOptions(bookData?.bookDoc, format),
+    () => buildCoReadingRangeOptions(bookData?.bookDoc ?? undefined, format),
     [bookData?.bookDoc, format]
   );
   const supported =

@@ -74,9 +74,9 @@ export const AnnotationItem = ({
     }
     // AI 批注额外驱动右侧阅读地图；人类批注不触发
     const opened = openReadingFootprintForAnnotation({
-      bookId,
+      bookId: bookId ?? undefined,
       annotation,
-      setPendingReadingFootprint,
+      setPendingReadingFootprint: setPendingReadingFootprint ?? undefined,
       eventTarget: typeof window !== "undefined" ? window : undefined,
     });
     if (opened) {

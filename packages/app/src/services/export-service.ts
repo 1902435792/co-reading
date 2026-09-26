@@ -1,7 +1,7 @@
 import type { Note } from "@/types/note";
 import type { Thread } from "@/types/thread";
 import { exists, mkdir, writeTextFile } from "@tauri-apps/plugin-fs";
-import type { UIMessage, UIMessagePart } from "ai";
+import type { ToolUIPart, UIMessage, UIMessagePart } from "ai";
 
 export interface ExportOptions {
   obsidianVaultPath: string;
@@ -109,17 +109,20 @@ function partToText(part: UIMessagePart<any, any>) {
     return "";
   }
 
-  if (part.type === "quote") {
-    return `> ${part.text ?? ""}`;
+  // 自定义的引用片段不在 AI SDK 的类型联合里，按普通对象读取。
+  const custom = part as { type?: string; text?: string };
+  if (custom.type === "quote") {
+    return `> ${custom.text ?? ""}`;
   }
 
   if (part.type?.startsWith("tool-")) {
-    const toolName = part.type.replace(/^tool-/, "");
-    if (part.state === "output-available" && part.output) {
-      return `\`\`\`json\n${JSON.stringify(part.output, null, 2)}\n\`\`\``;
+    const tool = part as ToolUIPart;
+    const toolName = tool.type.replace(/^tool-/, "");
+    if (tool.state === "output-available" && tool.output) {
+      return `\`\`\`json\n${JSON.stringify(tool.output, null, 2)}\n\`\`\``;
     }
-    if (part.state === "output-error") {
-      return `工具 ${toolName} 调用失败：${part.errorText ?? "未知错误"}`;
+    if (tool.state === "output-error") {
+      return `工具 ${toolName} 调用失败：${tool.errorText ?? "未知错误"}`;
     }
     return `工具 ${toolName} 调用中`;
   }

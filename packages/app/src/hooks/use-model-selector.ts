@@ -76,7 +76,6 @@ export function useModelSelector(defaultProviderId?: string, defaultModelId?: st
             providerId: provider.provider,
             providerName: provider.name,
             modelName: model.name || model.id,
-            providerIcon: provider.icon,
           })),
       );
   }, [modelProviders]);

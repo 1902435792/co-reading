@@ -1,34 +1,11 @@
 import { EXTS } from "@/lib/document";
 import { SUPPORTED_LANGS } from "@/services/constants";
 import type { Book, BookConfig, BookProgress, WritingMode } from "@/types/book";
-import { getUserLang, isContentURI, isFileURI, isValidURL, makeSafeFilename } from "./misc";
+import { getUserLang, isContentURI, isFileURI, isValidURL } from "./misc";
 import { getDirFromLanguage } from "./rtl";
-import { getStorageType } from "./storage";
 
-export const getDir = (book: Book) => {
-  return `${book.hash}`;
-};
 export const getLibraryFilename = () => {
   return "library.json";
-};
-export const getRemoteBookFilename = (book: Book) => {
-  // S3 storage: https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/userguide/object-keys.html
-  if (getStorageType() === "r2") {
-    return `${book.hash}/${makeSafeFilename(book.sourceTitle || book.title)}.${EXTS[book.format]}`;
-  }
-  if (getStorageType() === "s3") {
-    return `${book.hash}/${book.hash}.${EXTS[book.format]}`;
-  }
-  return "";
-};
-export const getLocalBookFilename = (book: Book) => {
-  return `${book.hash}/${makeSafeFilename(book.sourceTitle || book.title)}.${EXTS[book.format]}`;
-};
-export const getCoverFilename = (book: Book) => {
-  return `${book.hash}/cover.png`;
-};
-export const getConfigFilename = (book: Book) => {
-  return `${book.hash}/config.json`;
 };
 export const isBookFile = (filename: string) => {
   return Object.values(EXTS).includes(filename.split(".").pop()!);

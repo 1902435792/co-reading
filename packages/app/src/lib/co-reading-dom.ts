@@ -70,12 +70,6 @@ function rangeFromOffsets(
   return range;
 }
 
-function elementRange(element: Element): Range {
-  const range = element.ownerDocument.createRange();
-  range.selectNodeContents(element);
-  return range;
-}
-
 function intersectRanges(base: Range, visible: Range): Range | null {
   if (!visible.intersectsNode(base.commonAncestorContainer)) return null;
   const intersection = base.cloneRange();

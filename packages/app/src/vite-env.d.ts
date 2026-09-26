@@ -4,6 +4,7 @@
 declare module "foliate-js/epubcfi.js" {
   export function collapse(location: any, end?: boolean): string;
   export function compare(cfi1: string, cfi2: string): number;
+  export function parse(cfi: string): any;
 }
 
 declare module "foliate-js/overlayer.js" {

@@ -12,7 +12,6 @@ type UseThemeProps = {
 export const useTheme = ({ systemUIVisible = true, appThemeColor = "base-100" }: UseThemeProps = {}) => {
   const { settings } = useAppSettingsStore();
   const {
-    themeColor,
     isDarkMode,
     showSystemUI,
     dismissSystemUI,

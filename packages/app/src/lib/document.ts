@@ -117,11 +117,6 @@ export class DocumentLoader {
     return arr[0] === 0x50 && arr[1] === 0x4b && arr[2] === 0x03 && arr[3] === 0x04;
   }
 
-  private async isPDF(): Promise<boolean> {
-    const arr = new Uint8Array(await this.file.slice(0, 5).arrayBuffer());
-    return arr[0] === 0x25 && arr[1] === 0x50 && arr[2] === 0x44 && arr[3] === 0x46 && arr[4] === 0x2d;
-  }
-
   private async makeZipLoader() {
     const getComment = async (): Promise<string | null> => {
       const EOCD_SIGNATURE = [0x50, 0x4b, 0x05, 0x06];

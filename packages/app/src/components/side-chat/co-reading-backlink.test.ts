@@ -92,7 +92,8 @@ test("production entry writes pending footprint and dispatches only for AI annot
     }),
     null
   );
-  assert.deepEqual(pending, []);
+  // deepEqual 是断言签名，会把 pending 收窄成 never[]，这里只比长度。
+  assert.equal(pending.length, 0);
   assert.deepEqual(received, []);
 
   const opened = openReadingFootprintForAnnotation({
@@ -103,7 +104,7 @@ test("production entry writes pending footprint and dispatches only for AI annot
   });
   const expected = createReadingFootprintTarget("book-a", ai);
   assert.deepEqual(opened, expected);
-  assert.deepEqual(pending, [expected]);
+  assert.deepEqual([...pending], [expected]);
   assert.deepEqual(received, [expected]);
 
   assert.equal(
@@ -175,7 +176,11 @@ test("source navigation selects an exact CFI and returns a section fallback when
   const exactNavigator = {
     resolveCFI: () => ({ index: 1, anchor: () => ({} as Range) }),
     select: async () => {},
-    renderer: { goTo: async (target: unknown) => exactCalls.push(target) },
+    renderer: {
+      goTo: async (target: unknown) => {
+        exactCalls.push(target);
+      },
+    },
   };
 
   assert.deepEqual(
@@ -196,7 +201,11 @@ test("source navigation selects an exact CFI and returns a section fallback when
       throw new Error("stale CFI");
     },
     select: async () => {},
-    renderer: { goTo: async (target: unknown) => fallbackCalls.push(target) },
+    renderer: {
+      goTo: async (target: unknown) => {
+        fallbackCalls.push(target);
+      },
+    },
   };
   assert.deepEqual(
     await navigateToReadingSource(

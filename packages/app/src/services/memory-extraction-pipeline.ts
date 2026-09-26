@@ -74,7 +74,7 @@ export async function maybeExtractMemories(
     const result = await generateText({
       model,
       prompt: extractionPrompt,
-      maxTokens: 500,
+      maxOutputTokens: 500,
       temperature: 0.1,
     });
 

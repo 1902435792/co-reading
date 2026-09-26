@@ -93,7 +93,7 @@ ${highlightsJson}`;
     model,
     system: CURATION_SYSTEM,
     prompt: userPrompt,
-    maxTokens: 1000,
+    maxOutputTokens: 1000,
   });
 
   // 解析 JSON 数组
@@ -193,7 +193,7 @@ ${highlightsText}`;
     model,
     system: DIGEST_SYSTEM,
     prompt: userPrompt,
-    maxTokens: 3000,
+    maxOutputTokens: 3000,
   });
 
   return text;
