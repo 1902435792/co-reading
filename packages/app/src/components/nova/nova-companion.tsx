@@ -1,5 +1,12 @@
 import { getAnnotationSourceTarget } from "@/components/side-chat/co-reading-backlink";
 import { EMPTY_BOOK_NOTES, selectBookNotes } from "@/components/side-chat/co-reading-panel-state";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
 import type { BookNote } from "@/types/book";
 import type { CoReadingSourceTarget } from "@/types/co-reading";
@@ -105,6 +112,10 @@ function NovaCompanionInner({
   const [collapsed, setCollapsed] = useState(() => readJson(COLLAPSED_KEY, false));
   const [reaction, setReaction] = useState<NovaReaction | null>(null);
   const [bubble, setBubble] = useState<NovaBubble | null>(null);
+  // 最近一条边注，关掉后可以从右键菜单再打开。
+  const [lastAnnotation, setLastAnnotation] = useState<NovaBubble | null>(null);
+  // 用户关掉暂停/打盹台词时记下当时的状态，状态变化前不再弹出。
+  const [dismissedFallbackMood, setDismissedFallbackMood] = useState<NovaMood | null>(null);
   const [unread, setUnread] = useState(false);
   const [lastActivityAt, setLastActivityAt] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
@@ -124,6 +135,7 @@ function NovaCompanionInner({
     (next: Omit<NovaBubble, "id">) => {
       bubbleIdRef.current += 1;
       setBubble({ ...next, id: bubbleIdRef.current });
+      if (next.kind === "annotation") setLastAnnotation({ ...next, id: bubbleIdRef.current });
       if (collapsed && next.kind !== "info") setUnread(true);
     },
     [collapsed],
@@ -258,6 +270,9 @@ function NovaCompanionInner({
   const [imageSeed, setImageSeed] = useState(() => nextSeed());
   // biome-ignore lint/correctness/useExhaustiveDependencies: 状态变化时换表情
   useEffect(() => setImageSeed(nextSeed()), [mood]);
+  // 状态变了（翻页、恢复共读等），之前关掉的暂停/打盹台词可以重新出现。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 只在状态变化时重置
+  useEffect(() => setDismissedFallbackMood(null), [mood]);
   const imageUrl = reaction?.image && reaction.mood === mood ? reaction.image : pickNovaImage(mood, imageSeed);
   const animationData = useMemo(() => buildNovaAnimation(mood, imageUrl), [mood, imageUrl]);
 
@@ -283,10 +298,23 @@ function NovaCompanionInner({
     y.set(0);
     savePosition();
   };
+  const closeBubble = () => {
+    setBubble(null);
+    setDismissedFallbackMood(mood);
+  };
+  const reopenLastAnnotation = () => {
+    if (!lastAnnotation) return;
+    bubbleIdRef.current += 1;
+    setCollapsed(false);
+    setUnread(false);
+    // 手动打开的边注不自动消失，点 × 才关。
+    setBubble({ ...lastAnnotation, id: bubbleIdRef.current, ttl: 0 });
+  };
 
   const playing = isTabVisible && pageVisible;
-  const sleepyLine = mood === "sleep" && !bubble ? pickNovaLine("sleep", imageSeed) : null;
-  const pausedLine = mood === "paused" && !bubble ? pickNovaLine("paused", 0) : null;
+  const fallbackAllowed = !bubble && dismissedFallbackMood !== mood;
+  const sleepyLine = mood === "sleep" && fallbackAllowed ? pickNovaLine("sleep", imageSeed) : null;
+  const pausedLine = mood === "paused" && fallbackAllowed ? pickNovaLine("paused", 0) : null;
   const shownBubble: NovaBubble | null =
     bubble ?? (sleepyLine || pausedLine ? { id: -1, kind: "info", text: (sleepyLine ?? pausedLine)!, ttl: 0 } : null);
   const avatarSize = collapsed ? 48 : showAvatar ? 120 : 44;
@@ -316,7 +344,7 @@ function NovaCompanionInner({
               key={shownBubble.id}
               bubble={shownBubble}
               reducedMotion={reducedMotion}
-              onClose={() => setBubble(null)}
+              onClose={closeBubble}
               onOpenSource={openSource}
             />
           )}
@@ -345,40 +373,54 @@ function NovaCompanionInner({
               </button>
             </div>
           )}
-          <motion.div
-            role="button"
-            tabIndex={0}
-            aria-label={collapsed ? "展开 Nova" : "摸摸 Nova"}
-            title={collapsed ? "展开 Nova" : "摸摸头 · 拖动可移动 · 双击复位"}
-            onTap={onPet}
-            onDoubleClick={resetPosition}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onPet();
-              }
-            }}
-            whileHover={reducedMotion ? undefined : { scale: 1.04 }}
-            whileTap={reducedMotion ? undefined : { scale: 0.95 }}
-            className="size-full cursor-grab select-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
-          >
-            {showAvatar && !collapsed ? (
-              <NovaLottiePlayer
-                data={animationData}
-                loop={!NOVA_ONE_SHOT_MOODS.has(mood)}
-                playing={playing}
-                fallbackSrc={imageUrl}
-                reducedMotion={reducedMotion}
-              />
-            ) : (
-              <img
-                src={collapsed ? imageUrl : NOVA_STATIC_AVATAR}
-                alt="Nova"
-                draggable={false}
-                className="size-full rounded-full border-2 border-white shadow-lg"
-              />
-            )}
-          </motion.div>
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <motion.div
+                role="button"
+                tabIndex={0}
+                aria-label={collapsed ? "展开 Nova" : "摸摸 Nova"}
+                title={collapsed ? "展开 Nova · 右键更多" : "摸摸头 · 拖动可移动 · 右键更多"}
+                onTap={onPet}
+                onDoubleClick={resetPosition}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onPet();
+                  }
+                }}
+                whileHover={reducedMotion ? undefined : { scale: 1.04 }}
+                whileTap={reducedMotion ? undefined : { scale: 0.95 }}
+                className="size-full cursor-grab select-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+              >
+                {showAvatar && !collapsed ? (
+                  <NovaLottiePlayer
+                    data={animationData}
+                    loop={!NOVA_ONE_SHOT_MOODS.has(mood)}
+                    playing={playing}
+                    fallbackSrc={imageUrl}
+                    reducedMotion={reducedMotion}
+                  />
+                ) : (
+                  <img
+                    src={collapsed ? imageUrl : NOVA_STATIC_AVATAR}
+                    alt="Nova"
+                    draggable={false}
+                    className="size-full rounded-full border-2 border-white shadow-lg"
+                  />
+                )}
+              </motion.div>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-48">
+              <ContextMenuItem disabled={!lastAnnotation} onSelect={reopenLastAnnotation}>
+                再看刚才的边注
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={onPet}>{collapsed ? "展开 Nova" : "摸摸 Nova"}</ContextMenuItem>
+              <ContextMenuSeparator />
+              {!collapsed && <ContextMenuItem onSelect={() => setCollapsed(true)}>收起</ContextMenuItem>}
+              <ContextMenuItem onSelect={resetPosition}>复位位置</ContextMenuItem>
+              <ContextMenuItem onSelect={() => setNovaCompanionMode("off")}>隐藏 Nova</ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
           {collapsed && unread && (
             <span className="absolute top-0 right-0 size-3 animate-pulse rounded-full border-2 border-background bg-rose-500" />
           )}
