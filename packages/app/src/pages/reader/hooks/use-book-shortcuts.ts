@@ -2,6 +2,7 @@ import useShortcuts from "@/hooks/use-shortcuts";
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL } from "@/services/constants";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useLayoutStore } from "@/store/layout-store";
+import { useImmersiveStore } from "@/store/immersive-store";
 import { eventDispatcher } from "@/utils/event";
 import { getStyles } from "@/utils/style";
 import { useReaderStoreApi } from "../components/reader-provider";
@@ -135,11 +136,17 @@ const useBookShortcuts = () => {
     toggleSettingsDialog();
   };
 
+  const toggleImmersive = () => {
+    if (!isTabVisible) return;
+    useImmersiveStore.getState().toggleImmersive();
+  };
+
   useShortcuts(
     {
       onToggleScrollMode: toggleScrollMode,
       onToggleSearchBar: showSearchBar,
       onToggleTTS: toggleTTS,
+      onToggleImmersive: toggleImmersive,
       onReloadPage: reloadPage,
       onGoLeft: goLeft,
       onGoRight: goRight,

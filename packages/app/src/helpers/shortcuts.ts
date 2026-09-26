@@ -4,6 +4,7 @@ const DEFAULT_SHORTCUTS = {
   onToggleSearchBar: ["ctrl+f", "cmd+f"],
   onToggleScrollMode: ["shift+j"],
   onToggleTTS: ["t"],
+  onToggleImmersive: ["z"],
 
   onReloadPage: ["shift+r"],
   onToggleFullscreen: ["F11"],

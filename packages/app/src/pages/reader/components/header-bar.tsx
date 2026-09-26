@@ -1,7 +1,8 @@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useLayoutStore } from "@/store/layout-store";
 import { useThemeStore } from "@/store/theme-store";
-import { ChevronLeft, ChevronRight, TableOfContents } from "lucide-react";
+import { useImmersiveStore } from "@/store/immersive-store";
+import { ChevronLeft, ChevronRight, Maximize2, TableOfContents } from "lucide-react";
 import { useRef } from "react";
 import {
   TbLayoutSidebarLeftCollapse,
@@ -36,6 +37,7 @@ const HeaderBar = () => {
 
   const { isChatVisible, isNotepadVisible, toggleChatSidebar, toggleNotepadSidebar } = useLayoutStore();
   const { swapSidebars } = useThemeStore();
+  const enterImmersive = useImmersiveStore((state) => state.enterImmersive);
 
   const isTocDropdownOpen = openDropdown === "toc";
 
@@ -149,6 +151,15 @@ const HeaderBar = () => {
             showControls ? "opacity-100" : "opacity-40"
           }`}
         >
+          <button
+            type="button"
+            className="cursor-pointer"
+            title="沉浸阅读（Z），Esc 退出"
+            aria-label="沉浸阅读"
+            onClick={enterImmersive}
+          >
+            <Maximize2 className="size-4 text-neutral-700 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200" />
+          </button>
           <SearchDropdown />
           <SettingsDropdown />
           <div

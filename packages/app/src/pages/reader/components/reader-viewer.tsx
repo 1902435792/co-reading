@@ -6,12 +6,15 @@ import { useLayoutStore } from "@/store/layout-store";
 import { useLibraryStore } from "@/store/library-store";
 import { getInsetEdges } from "@/utils/grid";
 import { getViewInsets } from "@/utils/insets";
+import { useImmersiveStore } from "@/store/immersive-store";
 import { useEffect, useMemo } from "react";
+import { toast } from "sonner";
 import useBookShortcuts from "../hooks/use-book-shortcuts";
 import { useCoReading } from "../hooks/use-co-reading";
 import { useCoReadingNavigation } from "../hooks/use-co-reading-navigation";
 import { useCoReadingRange } from "../hooks/use-co-reading-range";
 import { useFoliateViewer } from "../hooks/use-foliate-viewer";
+import { useReadingSummary } from "../hooks/use-reading-summary";
 import Annotator from "./annotator";
 import FooterBar from "./footer-bar";
 import HeaderBar from "./header-bar";
@@ -81,6 +84,29 @@ export default function ReaderViewer() {
   useCoReading(bookId, isTabVisible);
   useCoReadingRange(bookId);
   useCoReadingNavigation(bookId);
+  useReadingSummary(bookId);
+
+  const immersive = useImmersiveStore((state) => state.immersive);
+  const exitImmersive = useImmersiveStore((state) => state.exitImmersive);
+  // 沉浸阅读：Esc 退出（正文 iframe 里的按键通过 postMessage 转发过来）。
+  useEffect(() => {
+    if (!immersive || !isTabVisible) return;
+    toast("沉浸阅读", { description: "按 Esc 或 Z 退出，也可以右键 Nova", duration: 3_000 });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") exitImmersive();
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "iframe-keydown" && event.data.key === "Escape") exitImmersive();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("message", onMessage);
+    };
+  }, [immersive, isTabVisible, exitImmersive]);
+  // 关掉阅读页时恢复侧栏。
+  useEffect(() => () => useImmersiveStore.getState().exitImmersive(), []);
 
   const { sessionStats, isInitialized: isSessionInitialized } = useReadingSession(bookId, {
     saveInterval: 5 * 1000,
@@ -122,9 +148,9 @@ export default function ReaderViewer() {
 
   return (
     <div id={`gridcell-${bookId}`} className="relative flex h-full w-full flex-col rounded-md bg-background">
-      <HeaderBar />
+      {!immersive && <HeaderBar />}
       <ReaderViewerContent />
-      <FooterBar />
+      {!immersive && <FooterBar />}
       <Annotator />
       <NovaCompanion bookId={bookId} isTabVisible={isTabVisible} />
     </div>

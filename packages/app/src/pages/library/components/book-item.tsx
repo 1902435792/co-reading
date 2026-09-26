@@ -15,6 +15,9 @@ import { Menu, MenuItem, PredefinedMenuItem, Submenu } from "@tauri-apps/api/men
 import { LogicalPosition } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { MoreHorizontal } from "lucide-react";
+import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
+import { useNovaExtras } from "@/components/nova/nova-extras";
+import { getNovaShelfLine } from "@/components/nova/nova-moments";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import EditInfo from "./edit-info";
@@ -271,6 +274,21 @@ export default function BookItem({ book, availableTags = [], onDelete, onUpdate,
     },
     [book.id, book.tags, onUpdate],
   );
+
+  const novaExtras = useNovaExtras();
+  const shelfLine = novaExtras.shelfLines
+    ? getNovaShelfLine(
+        {
+          status: book.status?.status,
+          progressCurrent: book.status?.progressCurrent,
+          progressTotal: book.status?.progressTotal,
+          lastReadAt: book.status?.lastReadAt,
+          completedAt: book.status?.completedAt,
+          addedAt: book.createdAt,
+        },
+        Date.now(),
+      )
+    : null;
 
   const renderProgress = () => {
     if (!book.status) {
@@ -538,7 +556,7 @@ export default function BookItem({ book, availableTags = [], onDelete, onUpdate,
               <h4 className="truncate text-neutral-600 text-sm leading-tight dark:text-neutral-200">{book.title}</h4>
             </div>
 
-            <div className="aspect-[4/5] w-full overflow-hidden">
+            <div className="relative aspect-[4/5] w-full overflow-hidden">
               {book.coverUrl ? (
                 <img src={book.coverUrl} alt={book.title} className="h-full w-full object-cover" />
               ) : (
@@ -547,6 +565,15 @@ export default function BookItem({ book, availableTags = [], onDelete, onUpdate,
                     <div className="mb-2 font-bold text-2xl text-neutral-500 dark:text-neutral-400">📖</div>
                     <div className="line-clamp-3 text-neutral-600 text-xs dark:text-neutral-300">{book.title}</div>
                   </div>
+                </div>
+              )}
+              {shelfLine && (
+                <div
+                  className="pointer-events-none absolute inset-x-1 bottom-1 flex items-center gap-1 rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] text-foreground shadow-sm backdrop-blur"
+                  title={shelfLine}
+                >
+                  <img src={NOVA_STATIC_AVATAR} alt="" className="size-4 shrink-0 rounded-full" />
+                  <span className="truncate">{shelfLine}</span>
                 </div>
               )}
             </div>

@@ -8,17 +8,21 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
+import { useImmersiveStore } from "@/store/immersive-store";
+import { SessionState } from "@/types/reading-session";
 import type { BookNote } from "@/types/book";
 import type { CoReadingSourceTarget } from "@/types/co-reading";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "framer-motion";
 import { ChevronRight, Minus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { classifyNovaReactionWithJev } from "@/services/jev-service";
-import { NOVA_IMAGE_BY_NAME, NOVA_STATIC_AVATAR, pickNovaImage } from "./nova-assets";
+import { NOVA_IMAGE_BY_NAME, NOVA_LATE_NIGHT_IMAGE, NOVA_STATIC_AVATAR, pickNovaImage } from "./nova-assets";
 import { setNovaCompanionMode, useNovaCompanionMode } from "./nova-companion-mode";
+import { useNovaExtras } from "./nova-extras";
 import { NOVA_ONE_SHOT_MOODS, type NovaMood, buildNovaAnimation } from "./nova-lottie";
 import { NovaLottiePlayer } from "./nova-lottie-player";
 import { deriveNovaMood, getAnnotationReaction, pickNovaLine, shortenNovaText } from "./nova-mood";
+import { activeMsFromStats, formatActiveDuration, isLateNight } from "./nova-moments";
 
 interface NovaBubble {
   id: number;
@@ -98,6 +102,10 @@ function NovaCompanionInner({
 }: { bookId: string; isTabVisible: boolean; showAvatar: boolean }) {
   const snapshot = useReaderStore((state) => state.coReadingSnapshot)!;
   const runtime = useReaderStore((state) => state.coReadingRuntime)!;
+  const sessionStats = useReaderStore((state) => state.sessionStats);
+  const extras = useNovaExtras();
+  const immersive = useImmersiveStore((state) => state.immersive);
+  const toggleImmersive = useImmersiveStore((state) => state.toggleImmersive);
   const notes = useReaderStore(selectBookNotes) ?? EMPTY_BOOK_NOTES;
   const location = useReaderStore((state) => state.location);
   const bookTitle = useReaderStore((state) => state.bookData?.book?.title) ?? "这本书";
@@ -182,8 +190,37 @@ function NovaCompanionInner({
   // biome-ignore lint/correctness/useExhaustiveDependencies: 只在打开书时触发一次
   useEffect(() => {
     react("greet", 2_600);
-    say({ kind: "info", text: pickNovaLine("greet", nextSeed(), { title: bookTitle }), ttl: 6_000 });
+    const late = extras.lateNight && isLateNight(new Date());
+    say({
+      kind: "info",
+      text: late ? pickNovaLine("lateGreet", nextSeed()) : pickNovaLine("greet", nextSeed(), { title: bookTitle }),
+      ttl: 6_000,
+    });
   }, [bookId]);
+
+  // 深夜：每 45 分钟提醒一次休息（只在空闲、没有气泡时）。
+  const lastRestReminderRef = useRef(Date.now());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 每次时钟跳动检查一次
+  useEffect(() => {
+    if (!extras.lateNight || !isLateNight(new Date(now))) return;
+    if (now - lastRestReminderRef.current < 45 * 60_000 || bubble || collapsed) return;
+    lastRestReminderRef.current = now;
+    say({ kind: "info", text: pickNovaLine("lateRest", nextSeed()), ttl: 8_000 });
+  }, [now]);
+
+  // 沉浸阅读时缩成小头像，退出后恢复原来的样子。
+  const collapsedBeforeImmersiveRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (immersive) {
+      setCollapsed((current) => {
+        collapsedBeforeImmersiveRef.current = current;
+        return true;
+      });
+    } else if (collapsedBeforeImmersiveRef.current !== null) {
+      setCollapsed(collapsedBeforeImmersiveRef.current);
+      collapsedBeforeImmersiveRef.current = null;
+    }
+  }, [immersive]);
 
   // 新边注：打开书之前已有的边注不播报。
   const knownNoteIdsRef = useRef<Set<string> | null>(null);
@@ -273,7 +310,13 @@ function NovaCompanionInner({
   // 状态变了（翻页、恢复共读等），之前关掉的暂停/打盹台词可以重新出现。
   // biome-ignore lint/correctness/useExhaustiveDependencies: 只在状态变化时重置
   useEffect(() => setDismissedFallbackMood(null), [mood]);
-  const imageUrl = reaction?.image && reaction.mood === mood ? reaction.image : pickNovaImage(mood, imageSeed);
+  const lateNightIdle = extras.lateNight && mood === "idle" && isLateNight(new Date(now));
+  const imageUrl =
+    reaction?.image && reaction.mood === mood
+      ? reaction.image
+      : lateNightIdle
+        ? NOVA_LATE_NIGHT_IMAGE
+        : pickNovaImage(mood, imageSeed);
   const animationData = useMemo(() => buildNovaAnimation(mood, imageUrl), [mood, imageUrl]);
 
   const onPet = () => {
@@ -309,6 +352,21 @@ function NovaCompanionInner({
     setUnread(false);
     // 手动打开的边注不自动消失，点 × 才关。
     setBubble({ ...lastAnnotation, id: bubbleIdRef.current, ttl: 0 });
+  };
+
+  const sayReadingTime = () => {
+    const activeMs = activeMsFromStats(
+      sessionStats
+        ? {
+            totalActiveTime: sessionStats.totalActiveTime,
+            lastActivityTime: sessionStats.lastActivityTime,
+            isActive: sessionStats.currentState === SessionState.ACTIVE,
+          }
+        : null,
+      Date.now(),
+    );
+    setCollapsed(false);
+    say({ kind: "info", text: `这次已经一起读了 ${formatActiveDuration(activeMs)}～`, ttl: 5_000 });
   };
 
   const playing = isTabVisible && pageVisible;
@@ -415,7 +473,9 @@ function NovaCompanionInner({
                 再看刚才的边注
               </ContextMenuItem>
               <ContextMenuItem onSelect={onPet}>{collapsed ? "展开 Nova" : "摸摸 Nova"}</ContextMenuItem>
+              {!immersive && <ContextMenuItem onSelect={sayReadingTime}>这次读了多久</ContextMenuItem>}
               <ContextMenuSeparator />
+              <ContextMenuItem onSelect={toggleImmersive}>{immersive ? "退出沉浸阅读" : "沉浸阅读"}</ContextMenuItem>
               {!collapsed && <ContextMenuItem onSelect={() => setCollapsed(true)}>收起</ContextMenuItem>}
               <ContextMenuItem onSelect={resetPosition}>复位位置</ContextMenuItem>
               <ContextMenuItem onSelect={() => setNovaCompanionMode("off")}>隐藏 Nova</ContextMenuItem>

@@ -1,6 +1,8 @@
 import { NovaCompanionModeControl } from "@/components/nova/nova-companion-mode-control";
+import { updateNovaExtras, useNovaExtras } from "@/components/nova/nova-extras";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { useProviderStore } from "@/store/provider-store";
 import { fetch as fetchTauri } from "@tauri-apps/plugin-http";
 import { CheckCircle2, CircleAlert, Loader2 } from "lucide-react";
@@ -37,6 +39,7 @@ export default function CoReadingSettings() {
   const [origin, setOrigin] = useState(() => toOrigin(bridgeProviders[0]?.baseUrl) ?? DEFAULT_BRIDGE_ORIGIN);
   const [check, setCheck] = useState<CheckState>({ status: "idle" });
   const [positionReset, setPositionReset] = useState(false);
+  const novaExtras = useNovaExtras();
 
   const runCheck = async () => {
     setCheck({ status: "checking" });
@@ -154,7 +157,7 @@ export default function CoReadingSettings() {
         <h2 className="text mb-1 dark:text-neutral-200">Nova 共读形象</h2>
         <p className="mb-4 text-muted-foreground text-xs leading-relaxed">
           开启共读后，Nova
-          会出现在阅读区右下角：读到哪里、想到什么都会用气泡告诉你，点击气泡可以跳到原文。可以拖动，双击头像回到默认位置。
+          会出现在阅读区右下角：读到哪里、想到什么都会用气泡告诉你，点击气泡可以跳到原文。可以拖动；右键头像有更多操作（再看边注、沉浸阅读、复位位置等）。
         </p>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <NovaCompanionModeControl />
@@ -170,6 +173,37 @@ export default function CoReadingSettings() {
             {positionReset ? "已重置，重新打开书后生效" : "重置 Nova 位置"}
           </Button>
         </div>
+        <div className="mt-4 space-y-3">
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>
+              合书小结
+              <span className="block text-muted-foreground text-xs">
+                关掉阅读标签页时，Nova 告诉你这次读了多久、读到哪、留了几条边注
+              </span>
+            </span>
+            <Switch
+              checked={novaExtras.sessionSummary}
+              onCheckedChange={(value) => updateNovaExtras({ sessionSummary: value })}
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>
+              深夜陪读
+              <span className="block text-muted-foreground text-xs">23 点到 5 点换成困倦表情，每 45 分钟提醒一次休息</span>
+            </span>
+            <Switch checked={novaExtras.lateNight} onCheckedChange={(value) => updateNovaExtras({ lateNight: value })} />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>
+              书架上的 Nova
+              <span className="block text-muted-foreground text-xs">书卡上显示一句话：很久没翻、快读完、刚读完、新书</span>
+            </span>
+            <Switch checked={novaExtras.shelfLines} onCheckedChange={(value) => updateNovaExtras({ shelfLines: value })} />
+          </label>
+        </div>
+        <p className="mt-3 text-muted-foreground text-xs">
+          沉浸阅读：点阅读页顶栏的 ⤢ 按钮、按 Z 或右键 Nova 进入，只留正文和小头像 Nova；按 Esc 退出。
+        </p>
       </section>
     </div>
   );

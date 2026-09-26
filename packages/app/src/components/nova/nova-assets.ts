@@ -67,3 +67,6 @@ export function pickNovaImage(mood: NovaMood, seed: number): string {
 
 /** 收起状态和“只要气泡”模式使用的静态头像。 */
 export const NOVA_STATIC_AVATAR = idleEnergetic;
+
+/** 深夜空闲时的困倦表情。 */
+export const NOVA_LATE_NIGHT_IMAGE = sleepSleepy;
