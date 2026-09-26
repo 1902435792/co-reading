@@ -10,6 +10,10 @@ export interface NovaExtras {
   shelfLines: boolean;
   /** 同一页停留很久时问要不要帮忙（会打扰，默认关闭）。 */
   stuckHint: boolean;
+  /** 读完一章时问要不要做章末卡片（会打扰，默认关闭）。 */
+  chapterCard: boolean;
+  /** AI 边注的画法：下划线，或只在句末画一个小墨点。 */
+  aiNoteStyle: "underline" | "ink";
 }
 
 export const DEFAULT_NOVA_EXTRAS: NovaExtras = {
@@ -17,20 +21,26 @@ export const DEFAULT_NOVA_EXTRAS: NovaExtras = {
   lateNight: true,
   shelfLines: true,
   stuckHint: false,
+  chapterCard: false,
+  aiNoteStyle: "underline",
 };
 
 const STORAGE_KEY = "deepreader:nova-extras";
 const CHANGE_EVENT = "deepreader:nova-extras-change";
 
+type NovaExtrasToggle = { [K in keyof NovaExtras]: NovaExtras[K] extends boolean ? K : never }[keyof NovaExtras];
+
 export function normalizeNovaExtras(value: unknown): NovaExtras {
   const raw = (value && typeof value === "object" ? value : {}) as Partial<Record<keyof NovaExtras, unknown>>;
-  const pick = (key: keyof NovaExtras) =>
+  const pick = (key: NovaExtrasToggle): boolean =>
     typeof raw[key] === "boolean" ? (raw[key] as boolean) : DEFAULT_NOVA_EXTRAS[key];
   return {
     sessionSummary: pick("sessionSummary"),
     lateNight: pick("lateNight"),
     shelfLines: pick("shelfLines"),
     stuckHint: pick("stuckHint"),
+    chapterCard: pick("chapterCard"),
+    aiNoteStyle: raw.aiNoteStyle === "ink" ? "ink" : "underline",
   };
 }
 

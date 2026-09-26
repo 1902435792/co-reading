@@ -209,6 +209,44 @@ export default function CoReadingSettings() {
             </span>
             <Switch checked={novaExtras.stuckHint} onCheckedChange={(value) => updateNovaExtras({ stuckHint: value })} />
           </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>
+              章末卡片
+              <span className="block text-muted-foreground text-xs">
+                认真读完一章（2 分钟以上）翻到下一章时，Nova 问要不要做一张小结 + 3 道自测题的卡片，可导出到 Obsidian。默认关闭；右键
+                Nova 随时可以手动做
+              </span>
+            </span>
+            <Switch
+              checked={novaExtras.chapterCard}
+              onCheckedChange={(value) => updateNovaExtras({ chapterCard: value })}
+            />
+          </label>
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span>
+              AI 边注样式
+              <span className="block text-muted-foreground text-xs">
+                墨点：只在句末点一个小墨点，评论越长墨色越深；鼠标移上去浮出边注，不挡正文
+              </span>
+            </span>
+            <div className="flex shrink-0 overflow-hidden rounded-md border text-xs">
+              {(
+                [
+                  ["underline", "下划线"],
+                  ["ink", "墨点"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`px-2.5 py-1 ${novaExtras.aiNoteStyle === value ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                  onClick={() => updateNovaExtras({ aiNoteStyle: value })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
         <p className="mt-3 text-muted-foreground text-xs">
           沉浸阅读：点阅读页顶栏的 ⤢ 按钮、按 Z 或右键 Nova 进入，只留正文和小头像 Nova；按 Esc 退出。

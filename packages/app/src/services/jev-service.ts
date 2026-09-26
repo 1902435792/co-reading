@@ -2,6 +2,7 @@ import { useProviderStore } from "@/store/provider-store";
 import { fetch as fetchTauri } from "@tauri-apps/plugin-http";
 import { useSyncExternalStore } from "react";
 import {
+  ANSWER_GRADE_QUESTIONS,
   DEFAULT_JEV_SETTINGS,
   type JevAnswer,
   type JevPageGate,
@@ -11,6 +12,7 @@ import {
   type NovaReactionOption,
   PAGE_GATE_QUESTIONS,
   PASSAGE_DIFFICULTY_QUESTIONS,
+  answerGradeOf,
   buildJevRequest,
   buildPageState,
   buildReactionState,
@@ -211,7 +213,6 @@ export async function classifyNovaReactionWithJev(quote: string, comment: string
   }
 }
 
-/** 设置页的「测试」按钮：用一段示例文字同时测两个功能。 */
 /**
  * 卡住探头：判断当前页是否难懂。返回 null 表示没法判断（未配置 Jev 或请求失败），调用方自行决定。
  */
@@ -221,6 +222,21 @@ export async function judgePassageDifficultyWithJev(text: string): Promise<boole
   try {
     const answers = await requestJevDecisions(buildPageState([{ text }]), PASSAGE_DIFFICULTY_QUESTIONS, { settings });
     return isPassageHard(answers);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 章末卡片：判断读者的回答是否抓住参考答案的主要意思。state 由调用方拼好。
+ * 返回 0–1 的把握度，null 表示没法判断。
+ */
+export async function gradeAnswerWithJev(state: string): Promise<number | null> {
+  const settings = getJevSettings();
+  if (!state.trim() || !isJevConfigured(settings)) return null;
+  try {
+    const answers = await requestJevDecisions(state, ANSWER_GRADE_QUESTIONS, { settings, timeoutMs: 8_000 });
+    return answerGradeOf(answers);
   } catch {
     return null;
   }

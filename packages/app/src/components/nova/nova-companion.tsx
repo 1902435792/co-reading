@@ -5,6 +5,9 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useReaderStore, useReaderStoreApi } from "@/pages/reader/components/reader-provider";
@@ -20,6 +23,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { classifyNovaReactionWithJev, judgePassageDifficultyWithJev } from "@/services/jev-service";
 import { generateText } from "ai";
 import { NOVA_IMAGE_BY_NAME, NOVA_LATE_NIGHT_IMAGE, NOVA_STATIC_AVATAR, pickNovaImage } from "./nova-assets";
+import { type ChapterCard, buildChapterCardPrompt, parseChapterCardJson, shouldOfferChapterCard } from "./chapter-card";
+import { ChapterCardDialog } from "./chapter-card-dialog";
+import { loadChapterCards, saveChapterCard } from "./chapter-card-store";
 import { NOVA_ASK_ACTIONS, NOVA_ASK_MENU, type NovaAskAction, buildNovaAskPrompt, cleanNovaAnswer } from "./nova-ask";
 import { type NovaAskRequest, registerNovaAsker } from "./nova-bus";
 import { setNovaCompanionMode, useNovaCompanionMode } from "./nova-companion-mode";
@@ -136,6 +142,8 @@ function NovaCompanionInner({
   const bookTitle = useReaderStore((state) => state.bookData?.book?.title) ?? "这本书";
   const setPendingCoReadingSource = useReaderStore((state) => state.setPendingCoReadingSource);
   const storeApi = useReaderStoreApi();
+  const sectionIndex = useReaderStore((state) => state.progress?.sectionIndex ?? null);
+  const sectionLabel = useReaderStore((state) => state.progress?.sectionLabel ?? "");
   const reducedMotion = useReducedMotion() ?? false;
 
   const boundsRef = useRef<HTMLDivElement>(null);
@@ -155,6 +163,8 @@ function NovaCompanionInner({
   const [now, setNow] = useState(() => Date.now());
   const [pageVisible, setPageVisible] = useState(() => !document.hidden);
   const [dragOver, setDragOver] = useState(false);
+  const [chapterCards, setChapterCards] = useState<ChapterCard[]>(() => loadChapterCards(bookId));
+  const [openCard, setOpenCard] = useState<ChapterCard | null>(null);
   const seedRef = useRef(Math.floor(Math.random() * 1000));
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
@@ -437,6 +447,119 @@ function NovaCompanionInner({
     say({ kind: "info", text: `这次已经一起读了 ${formatActiveDuration(activeMs)}～`, ttl: 5_000 });
   };
 
+  // ---------- 章末卡片 ----------
+  const cardBusyRef = useRef(false);
+  const currentActiveMs = () => {
+    const stats = storeApi.getState().sessionStats;
+    return stats
+      ? activeMsFromStats(
+          {
+            totalActiveTime: stats.totalActiveTime,
+            lastActivityTime: stats.lastActivityTime,
+            isActive: stats.currentState === SessionState.ACTIVE,
+          },
+          Date.now(),
+        )
+      : null;
+  };
+  const readSectionText = async (index: number): Promise<string> => {
+    const section = storeApi.getState().bookData?.bookDoc?.sections?.[index];
+    if (section?.createDocument) {
+      const doc = await section.createDocument();
+      const text = doc.body?.textContent ?? doc.documentElement?.textContent ?? "";
+      if (text.trim()) return text;
+    }
+    // 拿不到整章文档（例如 PDF）时，用共读已经记录下来的这一章文字兜底。
+    return snapshotRef.current.blocks
+      .filter((block) => block.sectionIndex === index)
+      .map((block) => block.text)
+      .join("\n");
+  };
+  const makeChapterCard = async (index: number, label: string) => {
+    if (cardBusyRef.current) return;
+    cardBusyRef.current = true;
+    const title = "Nova · 章末卡片";
+    setCollapsed(false);
+    react("thinking", 120_000);
+    say({ kind: "answer", title, text: `正在给「${label}」做卡片…`, ttl: 0 });
+    try {
+      const text = await readSectionText(index);
+      if (text.trim().length < 200) throw new Error("这一章文字太少，或者这种格式暂时拿不到整章文字");
+      const { system, prompt } = buildChapterCardPrompt({ bookTitle, sectionLabel: label, text });
+      const model = resolveCoReadingAgentModel(snapshotRef.current.settings);
+      const result = await generateText({
+        model,
+        system,
+        prompt,
+        maxOutputTokens: 1_200,
+        temperature: 0.4,
+        maxRetries: 0,
+        abortSignal: AbortSignal.timeout(120_000),
+      });
+      const content = parseChapterCardJson(result.text);
+      if (!content) throw new Error("卡片格式没解析出来，再试一次？");
+      const card: ChapterCard = {
+        ...content,
+        id: `${bookId}:${index}:${Date.now()}`,
+        bookId,
+        bookTitle,
+        sectionIndex: index,
+        sectionLabel: label,
+        createdAt: Date.now(),
+      };
+      setChapterCards(saveChapterCard(card));
+      react("found", 4_000);
+      say({
+        kind: "answer",
+        title,
+        text: `「${label}」的卡片做好啦！`,
+        ttl: 0,
+        actions: [{ label: "打开卡片", primary: true, onClick: () => setOpenCard(card) }],
+      });
+      setOpenCard(card);
+    } catch (error) {
+      react("error", 3_000);
+      say({
+        kind: "error",
+        text: `卡片没做成：${shortenNovaText(error instanceof Error ? error.message : String(error))}`,
+        ttl: 10_000,
+      });
+    } finally {
+      cardBusyRef.current = false;
+    }
+  };
+  // 翻到下一章时，如果上一章认真读过，问要不要做卡片（默认关闭）。
+  const sectionEnterRef = useRef<{ index: number | null; label: string; activeMs: number | null; at: number }>({
+    index: null,
+    label: "",
+    activeMs: null,
+    at: Date.now(),
+  });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 只在章节变化时判断
+  useEffect(() => {
+    const previous = sectionEnterRef.current;
+    const activeNow = currentActiveMs();
+    sectionEnterRef.current = { index: sectionIndex, label: sectionLabel ?? "", activeMs: activeNow, at: Date.now() };
+    if (!extras.chapterCard || previous.index === null || previous.index === sectionIndex) return;
+    const spent =
+      activeNow !== null && previous.activeMs !== null ? activeNow - previous.activeMs : Date.now() - previous.at;
+    if (!shouldOfferChapterCard({ fromIndex: previous.index, toIndex: sectionIndex, activeMsInSection: spent })) return;
+    if (chapterCards.some((card) => card.sectionIndex === previous.index)) return;
+    const index = previous.index;
+    const label = previous.label || `第 ${index + 1} 部分`;
+    react("found", 3_000);
+    say({
+      kind: "info",
+      title: "Nova · 读完一章啦",
+      text: `「${label}」读完了！要来张章末卡片吗？小结、3 个要点和 3 道小题。`,
+      ttl: 20_000,
+      actions: [
+        { label: "来一张", primary: true, onClick: () => void makeChapterCard(index, label) },
+        { label: "不用", onClick: () => setBubble(null) },
+      ],
+    });
+  }, [sectionIndex]);
+
   // ---------- 问 Nova ----------
   const askAbortRef = useRef<AbortController | null>(null);
   useEffect(
@@ -676,6 +799,29 @@ function NovaCompanionInner({
               </ContextMenuItem>
               <ContextMenuItem onSelect={onPet}>{collapsed ? "展开 Nova" : "摸摸 Nova"}</ContextMenuItem>
               {!immersive && <ContextMenuItem onSelect={sayReadingTime}>这次读了多久</ContextMenuItem>}
+              <ContextMenuItem
+                disabled={sectionIndex === null}
+                onSelect={() => {
+                  if (sectionIndex !== null)
+                    void makeChapterCard(sectionIndex, sectionLabel || `第 ${sectionIndex + 1} 部分`);
+                }}
+              >
+                为这一章做卡片
+              </ContextMenuItem>
+              {chapterCards.length > 0 && (
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger>章末卡片（{chapterCards.length}）</ContextMenuSubTrigger>
+                  <ContextMenuSubContent className="max-h-72 w-56 overflow-y-auto">
+                    {[...chapterCards]
+                      .sort((a, b) => a.sectionIndex - b.sectionIndex)
+                      .map((card) => (
+                        <ContextMenuItem key={card.id} onSelect={() => setOpenCard(card)}>
+                          <span className="truncate">{card.sectionLabel}</span>
+                        </ContextMenuItem>
+                      ))}
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+              )}
               <ContextMenuSeparator />
               <ContextMenuItem onSelect={toggleImmersive}>{immersive ? "退出沉浸阅读" : "沉浸阅读"}</ContextMenuItem>
               {!collapsed && <ContextMenuItem onSelect={() => setCollapsed(true)}>收起</ContextMenuItem>}
@@ -688,6 +834,12 @@ function NovaCompanionInner({
           )}
         </div>
       </motion.div>
+      <ChapterCardDialog
+        card={openCard}
+        onOpenChange={(open) => {
+          if (!open) setOpenCard(null);
+        }}
+      />
     </div>
   );
 }

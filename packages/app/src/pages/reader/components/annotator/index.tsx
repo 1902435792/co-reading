@@ -1,6 +1,8 @@
 import { openReadingFootprintForAnnotation } from "@/components/side-chat/co-reading-backlink";
 import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
 import { askNova } from "@/components/nova/nova-bus";
+import { getNovaExtras, useNovaExtras } from "@/components/nova/nova-extras";
+import { drawInkDot, inkStrength } from "@/components/nova/nova-ink";
 import { HIGHLIGHT_COLOR_HEX } from "@/services/constants";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useLayoutStore } from "@/store/layout-store";
@@ -8,7 +10,7 @@ import type { BookNote } from "@/types/book";
 import { Overlayer } from "foliate-js/overlayer.js";
 import { NotebookPen } from "lucide-react";
 import type React from "react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FiCopy, FiHelpCircle, FiMessageCircle } from "react-icons/fi";
 import { PiHighlighterFill } from "react-icons/pi";
 import { RiDeleteBinLine } from "react-icons/ri";
@@ -64,6 +66,39 @@ const Annotator: React.FC = () => {
     handleDismissPopup
   );
 
+  // 墨点边注：鼠标移到带墨点的句子上时，浮出 Nova 的边注。
+  const [inkTip, setInkTip] = useState<{ id: string; text: string; x: number; y: number } | null>(null);
+  const updateInkTip = (doc: Document, event: MouseEvent) => {
+    if (getNovaExtras().aiNoteStyle !== "ink") {
+      setInkTip((current) => (current ? null : current));
+      return;
+    }
+    const content = store
+      .getState()
+      .view?.renderer.getContents()
+      .find((item) => item.doc === doc);
+    const overlayer = content?.overlayer as { hitTest?: (point: { x: number; y: number }) => unknown[] } | undefined;
+    const [key] = (overlayer?.hitTest?.({ x: event.clientX, y: event.clientY }) ?? []) as [string?];
+    const note = key
+      ? store
+          .getState()
+          .config?.booknotes?.find(
+            (item) => (item.cfi === key || item.id === key) && item.author === "ai" && !item.deletedAt && item.note,
+          )
+      : undefined;
+    if (!note?.note) {
+      setInkTip((current) => (current ? null : current));
+      return;
+    }
+    const frame = (doc.defaultView?.frameElement as HTMLElement | null)?.getBoundingClientRect();
+    const text = note.note;
+    setInkTip((current) =>
+      current?.id === note.id
+        ? current
+        : { id: note.id, text, x: (frame?.left ?? 0) + event.clientX, y: (frame?.top ?? 0) + event.clientY },
+    );
+  };
+
   const onLoad = (event: Event) => {
     const detail = (event as CustomEvent).detail;
     const { doc, index } = detail;
@@ -74,14 +109,48 @@ const Annotator: React.FC = () => {
       detail.doc.addEventListener("mouseup", () => {
         handleMouseUp(doc, index);
       });
+      let pending = 0;
+      detail.doc.addEventListener("mousemove", (moveEvent: MouseEvent) => {
+        if (pending) return;
+        pending = window.requestAnimationFrame(() => {
+          pending = 0;
+          updateInkTip(doc, moveEvent);
+        });
+      });
+      detail.doc.addEventListener("mouseleave", () => setInkTip(null));
     }
   };
+
+  // 切换 AI 边注样式后，重新画一遍已有的 AI 边注。
+  const aiNoteStyle = useNovaExtras().aiNoteStyle;
+  const drawnStyleRef = useRef(aiNoteStyle);
+  useEffect(() => {
+    if (drawnStyleRef.current === aiNoteStyle) return;
+    drawnStyleRef.current = aiNoteStyle;
+    setInkTip(null);
+    const notes =
+      store
+        .getState()
+        .config?.booknotes?.filter((note) => note.type === "annotation" && note.author === "ai" && !note.deletedAt) ?? [];
+    for (const note of notes) void view?.addAnnotation(note);
+  }, [aiNoteStyle, view, store]);
 
   const onDrawAnnotation = (event: Event) => {
     const detail = (event as CustomEvent).detail;
     const { draw, annotation, doc, range } = detail;
     const { style, color } = annotation as BookNote;
     const hexColor = color ? HIGHLIGHT_COLOR_HEX[color] : color;
+    if ((annotation as BookNote).author === "ai" && getNovaExtras().aiNoteStyle === "ink") {
+      const node = range.startContainer;
+      const el = node.nodeType === 1 ? node : node.parentElement;
+      const writingMode: string = el ? doc.defaultView.getComputedStyle(el).writingMode : "";
+      draw(drawInkDot, {
+        color: hexColor,
+        strength: inkStrength((annotation as BookNote).note),
+        vertical: writingMode.startsWith("vertical"),
+      });
+      return;
+    }
     if (style === "highlight") {
       draw(Overlayer.highlight, { color: hexColor });
     } else if (["underline", "squiggly"].includes(style as string)) {
@@ -182,6 +251,18 @@ const Annotator: React.FC = () => {
 
   return (
     <div>
+      {inkTip && (
+        <div
+          className="pointer-events-none fixed z-50 w-72 rounded-xl border-2 border-amber-300 bg-amber-50 px-3 py-2 text-amber-950 text-xs leading-relaxed shadow-lg dark:border-amber-800 dark:bg-amber-950/90 dark:text-amber-50"
+          style={{
+            left: Math.max(8, Math.min(inkTip.x + 12, window.innerWidth - 300)),
+            top: Math.max(8, Math.min(inkTip.y + 16, window.innerHeight - 170)),
+          }}
+        >
+          <span className="mb-1 block font-semibold text-[11px] opacity-70">Nova 的边注 · 点击查看详情</span>
+          <span className="line-clamp-6 block whitespace-pre-line">{inkTip.text}</span>
+        </div>
+      )}
       {showAnnotPopup &&
         !showAskAIPopup &&
         trianglePosition &&

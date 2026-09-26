@@ -229,3 +229,19 @@ export function isPassageHard(answers: Record<string, JevAnswer>, threshold = 0.
   const value = noulOf(answers.hard_to_follow);
   return value === null ? null : value >= threshold;
 }
+
+// ---------- 章末卡片 · 自测打分 ----------
+
+export const ANSWER_GRADE_QUESTIONS: Record<string, JevQuestion> = {
+  captures_main_idea: {
+    type: "noul",
+    instructions:
+      "读者的回答是否抓住了参考答案的主要意思？措辞不同、更简短或补充了自己的理解都可以，只看核心意思是否对上。",
+    criteria: { true: "抓住了主要意思", false: "没有抓住，或答非所问" },
+  },
+};
+
+/** 0–1 的把握度；null 表示 Jev 没给出可用的判断。 */
+export function answerGradeOf(answers: Record<string, JevAnswer>): number | null {
+  return noulOf(answers.captures_main_idea);
+}
