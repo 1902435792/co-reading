@@ -7,7 +7,7 @@ import { useLibraryStore } from "@/store/library-store";
 import { getInsetEdges } from "@/utils/grid";
 import { getViewInsets } from "@/utils/insets";
 import { useImmersiveStore } from "@/store/immersive-store";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import useBookShortcuts from "../hooks/use-book-shortcuts";
 import { useCoReading } from "../hooks/use-co-reading";
@@ -88,15 +88,34 @@ export default function ReaderViewer() {
 
   const immersive = useImmersiveStore((state) => state.immersive);
   const exitImmersive = useImmersiveStore((state) => state.exitImmersive);
+  // 沉浸阅读的提示只在「刚进入」时弹一次；切换标签页回来不再重复。
+  const immersiveAnnouncedRef = useRef(false);
+  useEffect(() => {
+    if (!immersive) {
+      immersiveAnnouncedRef.current = false;
+      return;
+    }
+    if (!isTabVisible || immersiveAnnouncedRef.current) return;
+    immersiveAnnouncedRef.current = true;
+    toast("沉浸阅读", { description: "按 Esc 或 Z 退出，也可以右键 Nova", duration: 3_000 });
+  }, [immersive, isTabVisible]);
   // 沉浸阅读：Esc 退出（正文 iframe 里的按键通过 postMessage 转发过来）。
+  // 如果这次 Esc 已经被对话框、菜单、搜索框等处理掉了，就不再顺带退出沉浸模式。
   useEffect(() => {
     if (!immersive || !isTabVisible) return;
-    toast("沉浸阅读", { description: "按 Esc 或 Z 退出，也可以右键 Nova", duration: 3_000 });
+    const escapeHandledElsewhere = () =>
+      Boolean(document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [data-radix-popper-content-wrapper]'));
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") exitImmersive();
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.("input, textarea, [contenteditable='true']")) return;
+      if (escapeHandledElsewhere()) return;
+      exitImmersive();
     };
     const onMessage = (event: MessageEvent) => {
-      if (event.data?.type === "iframe-keydown" && event.data.key === "Escape") exitImmersive();
+      if (event.data?.type !== "iframe-keydown" || event.data.key !== "Escape") return;
+      if (escapeHandledElsewhere()) return;
+      exitImmersive();
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("message", onMessage);
