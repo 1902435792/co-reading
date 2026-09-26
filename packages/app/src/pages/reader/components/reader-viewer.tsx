@@ -1,4 +1,5 @@
 import { useReadingSession } from "@/hooks/use-reading-session";
+import { NovaCompanion } from "@/components/nova/nova-companion";
 import { useSafeAreaInsets } from "@/hooks/use-safe-areaInsets";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useLayoutStore } from "@/store/layout-store";
@@ -125,6 +126,7 @@ export default function ReaderViewer() {
       <ReaderViewerContent />
       <FooterBar />
       <Annotator />
+      <NovaCompanion bookId={bookId} isTabVisible={isTabVisible} />
     </div>
   );
 }

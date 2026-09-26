@@ -1,4 +1,5 @@
 import ModelSelector from "@/components/side-chat/model-selector";
+import { NovaCompanionModeControl } from "@/components/nova/nova-companion-mode-control";
 import { Button } from "@/components/ui/button";
 import {
   getCoReadingErrorInfo,
@@ -365,6 +366,9 @@ export function CoReadingPanelV2({
                 关闭普通跟读
               </Button>
             )}
+            <div className="mt-2">
+              <NovaCompanionModeControl />
+            </div>
           </section>
           {!model && (
             <p className="rounded bg-amber-50 p-2 text-amber-800 text-xs dark:bg-amber-950/30">
