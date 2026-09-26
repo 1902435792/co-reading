@@ -222,6 +222,28 @@ export default function CoReadingSettings() {
               onCheckedChange={(value) => updateNovaExtras({ chapterCard: value })}
             />
           </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>
+              跨书联想
+              <span className="block text-muted-foreground text-xs">
+                这一页提到书架上的另一本书、或出现你在其他书里记下的概念时，Nova 提一句；每处只提一次，最多 3 分钟一次
+              </span>
+            </span>
+            <Switch checked={novaExtras.crossBook} onCheckedChange={(value) => updateNovaExtras({ crossBook: value })} />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>
+              情绪曲线
+              <span className="block text-muted-foreground text-xs">
+                需要 Jev：每翻一页让 Jev 判断这页的情绪基调，右键 Nova →「情绪曲线」看整本书的起伏。会把页面文字发给 Jev
+                接口，默认关闭
+              </span>
+            </span>
+            <Switch
+              checked={novaExtras.emotionCurve}
+              onCheckedChange={(value) => updateNovaExtras({ emotionCurve: value })}
+            />
+          </label>
           <div className="flex items-center justify-between gap-3 text-sm">
             <span>
               AI 边注样式

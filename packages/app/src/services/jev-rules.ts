@@ -245,3 +245,42 @@ export const ANSWER_GRADE_QUESTIONS: Record<string, JevQuestion> = {
 export function answerGradeOf(answers: Record<string, JevAnswer>): number | null {
   return noulOf(answers.captures_main_idea);
 }
+
+// ---------- 情绪曲线 ----------
+
+export const EMOTION_QUESTIONS: Record<string, JevQuestion> = {
+  tone: {
+    type: "choice",
+    instructions: "这一页文字整体传达的情绪基调是什么？看叙述和描写本身，不看读者可能的感受。",
+    criteria: {
+      positive: "明亮：温暖、喜悦、希望、振奋、幽默",
+      neutral: "平静：客观、说明性、论述性，情绪不明显",
+      negative: "低沉：悲伤、紧张、愤怒、压抑、恐惧",
+    },
+  },
+  intense: {
+    type: "noul",
+    instructions: "这一页的情绪是否强烈、有感染力？",
+    criteria: { true: "情绪强烈", false: "情绪平淡" },
+  },
+};
+
+/** valence：-1（低沉）到 1（明亮）；intensity：0–1。null 表示 Jev 没给出可用的判断。 */
+export function emotionFromAnswers(answers: Record<string, JevAnswer>): { valence: number; intensity: number } | null {
+  const tone = answers.tone;
+  if (!tone) return null;
+  let valence: number | null = null;
+  const probabilities = tone.probabilities;
+  if (probabilities && Object.keys(probabilities).length > 0) {
+    valence = (probabilities.positive ?? 0) - (probabilities.negative ?? 0);
+  } else if (tone.choice) {
+    const sign = tone.choice === "positive" ? 1 : tone.choice === "negative" ? -1 : 0;
+    valence = sign * choiceConfidence(tone);
+  }
+  if (valence === null || !Number.isFinite(valence)) return null;
+  const intensity = noulOf(answers.intense) ?? 0.5;
+  return {
+    valence: Math.round(Math.max(-1, Math.min(1, valence)) * 1000) / 1000,
+    intensity: Math.round(Math.max(0, Math.min(1, intensity)) * 1000) / 1000,
+  };
+}

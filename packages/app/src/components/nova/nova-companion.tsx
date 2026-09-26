@@ -20,11 +20,21 @@ import type { CoReadingSourceTarget } from "@/types/co-reading";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "framer-motion";
 import { ChevronRight, Minus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { classifyNovaReactionWithJev, judgePassageDifficultyWithJev } from "@/services/jev-service";
+import {
+  classifyNovaReactionWithJev,
+  isJevConfigured,
+  judgePassageDifficultyWithJev,
+  sampleEmotionWithJev,
+  useJevSettings,
+} from "@/services/jev-service";
+import { getMemories } from "@/services/memory-service";
+import { useLibraryStore } from "@/store/library-store";
 import { generateText } from "ai";
 import { NOVA_IMAGE_BY_NAME, NOVA_LATE_NIGHT_IMAGE, NOVA_STATIC_AVATAR, pickNovaImage } from "./nova-assets";
 import { type ChapterCard, buildChapterCardPrompt, parseChapterCardJson, shouldOfferChapterCard } from "./chapter-card";
 import { ChapterCardDialog } from "./chapter-card-dialog";
+import { type EmotionPoint, loadEmotionPoints, saveEmotionPoint } from "./emotion-curve";
+import { EmotionCurveDialog } from "./emotion-curve-dialog";
 import { loadChapterCards, saveChapterCard } from "./chapter-card-store";
 import { NOVA_ASK_ACTIONS, NOVA_ASK_MENU, type NovaAskAction, buildNovaAskPrompt, cleanNovaAnswer } from "./nova-ask";
 import { type NovaAskRequest, registerNovaAsker } from "./nova-bus";
@@ -40,6 +50,13 @@ import {
   pickNovaLine,
   shortenNovaText,
 } from "./nova-mood";
+import {
+  type CrossBookConcept,
+  crossBookLine,
+  findCrossBookLinks,
+  loadCrossBookShown,
+  rememberCrossBookShown,
+} from "./nova-crossbook";
 import { activeMsFromStats, formatActiveDuration, isLateNight } from "./nova-moments";
 
 interface NovaBubble {
@@ -72,6 +89,8 @@ interface NovaReaction {
   image?: string;
 }
 
+/** 跨书联想最多每 3 分钟提一次。 */
+const NOVA_CROSSBOOK_GAP_MS = 3 * 60_000;
 const POSITION_KEY = "deepreader:nova-companion-position";
 const COLLAPSED_KEY = "deepreader:nova-companion-collapsed";
 
@@ -165,6 +184,10 @@ function NovaCompanionInner({
   const [dragOver, setDragOver] = useState(false);
   const [chapterCards, setChapterCards] = useState<ChapterCard[]>(() => loadChapterCards(bookId));
   const [openCard, setOpenCard] = useState<ChapterCard | null>(null);
+  const [emotionPoints, setEmotionPoints] = useState<EmotionPoint[]>(() => loadEmotionPoints(bookId));
+  const [showEmotion, setShowEmotion] = useState(false);
+  const pageKey = useReaderStore((state) => state.progress?.location ?? null);
+  const jevReady = isJevConfigured(useJevSettings());
   const seedRef = useRef(Math.floor(Math.random() * 1000));
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
@@ -446,6 +469,95 @@ function NovaCompanionInner({
     setCollapsed(false);
     say({ kind: "info", text: `这次已经一起读了 ${formatActiveDuration(activeMs)}～`, ttl: 5_000 });
   };
+
+  // ---------- 跨书联想 & 情绪曲线（翻页后停 3 秒再看这一页） ----------
+  const conceptsRef = useRef<CrossBookConcept[] | null>(null);
+  useEffect(() => {
+    if (!extras.crossBook || conceptsRef.current) return;
+    getMemories({ category: "concept", limit: 200 })
+      .then((list) => {
+        conceptsRef.current = list.map((item) => ({
+          id: item.id,
+          key: item.key,
+          value: item.value,
+          bookId: item.bookId,
+        }));
+      })
+      .catch(() => {
+        conceptsRef.current = [];
+      });
+  }, [extras.crossBook]);
+  const crossBookAtRef = useRef(0);
+  const emotionSampledRef = useRef(new Set<string>());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 只在翻页时触发
+  useEffect(() => {
+    if (!pageKey || !isTabVisible) return;
+    const timer = window.setTimeout(() => {
+      const state = storeApi.getState();
+      if (state.progress?.location !== pageKey) return;
+      const text = readVisibleText();
+      if (text.length < 40) return;
+
+      if (extras.crossBook && !bubble && !collapsed && Date.now() - crossBookAtRef.current > NOVA_CROSSBOOK_GAP_MS) {
+        const books = useLibraryStore.getState().booksWithStatus.map((book) => ({
+          id: book.id,
+          title: book.title,
+          status: book.status?.status,
+          progress:
+            book.status && book.status.progressTotal > 0
+              ? book.status.progressCurrent / book.status.progressTotal
+              : undefined,
+        }));
+        const [link] = findCrossBookLinks({
+          text,
+          currentBookId: bookId,
+          currentTitle: bookTitle,
+          books,
+          concepts: conceptsRef.current ?? [],
+          shown: loadCrossBookShown(bookId),
+        });
+        if (link) {
+          crossBookAtRef.current = Date.now();
+          rememberCrossBookShown(bookId, link.key);
+          react("found", 3_000);
+          const ok = { label: "知道啦", onClick: () => setBubble(null) };
+          say({
+            kind: "info",
+            title: "Nova · 跨书联想",
+            text: crossBookLine(link),
+            ttl: 15_000,
+            actions:
+              link.kind === "concept"
+                ? [
+                    {
+                      label: "让 Nova 连起来",
+                      primary: true,
+                      onClick: () =>
+                        void runAsk(
+                          `「${link.concept}」在《${link.title}》里：${link.value}\n\n这一页：${text.slice(0, 1_200)}`,
+                          "connect",
+                        ),
+                    },
+                    ok,
+                  ]
+                : [ok],
+          });
+        }
+      }
+
+      if (extras.emotionCurve && jevReady && text.length >= 80 && !emotionSampledRef.current.has(pageKey)) {
+        const info = state.progress?.pageinfo;
+        if (!info || !(info.total > 0)) return;
+        emotionSampledRef.current.add(pageKey);
+        const fraction = info.current / info.total;
+        const sectionLabel = state.progress?.sectionLabel || undefined;
+        void sampleEmotionWithJev(text).then((result) => {
+          if (result) setEmotionPoints(saveEmotionPoint(bookId, { at: Date.now(), fraction, sectionLabel, ...result }));
+        });
+      }
+    }, 3_000);
+    return () => window.clearTimeout(timer);
+  }, [pageKey]);
 
   // ---------- 章末卡片 ----------
   const cardBusyRef = useRef(false);
@@ -822,6 +934,14 @@ function NovaCompanionInner({
                   </ContextMenuSubContent>
                 </ContextMenuSub>
               )}
+              <ContextMenuItem
+                onSelect={() => {
+                  setEmotionPoints(loadEmotionPoints(bookId));
+                  setShowEmotion(true);
+                }}
+              >
+                情绪曲线{emotionPoints.length > 0 ? `（${emotionPoints.length}）` : ""}
+              </ContextMenuItem>
               <ContextMenuSeparator />
               <ContextMenuItem onSelect={toggleImmersive}>{immersive ? "退出沉浸阅读" : "沉浸阅读"}</ContextMenuItem>
               {!collapsed && <ContextMenuItem onSelect={() => setCollapsed(true)}>收起</ContextMenuItem>}
@@ -834,6 +954,14 @@ function NovaCompanionInner({
           )}
         </div>
       </motion.div>
+      <EmotionCurveDialog
+        open={showEmotion}
+        onOpenChange={setShowEmotion}
+        bookTitle={bookTitle}
+        points={emotionPoints}
+        enabled={extras.emotionCurve}
+        jevReady={jevReady}
+      />
       <ChapterCardDialog
         card={openCard}
         onOpenChange={(open) => {

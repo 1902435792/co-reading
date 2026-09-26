@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import {
   ANSWER_GRADE_QUESTIONS,
   DEFAULT_JEV_SETTINGS,
+  EMOTION_QUESTIONS,
   type JevAnswer,
   type JevPageGate,
   type JevQuestion,
@@ -17,6 +18,7 @@ import {
   buildPageState,
   buildReactionState,
   decidePageGate,
+  emotionFromAnswers,
   extractJevAnswers,
   isPassageHard,
   jevEndpointNeedsUrl,
@@ -237,6 +239,18 @@ export async function gradeAnswerWithJev(state: string): Promise<number | null> 
   try {
     const answers = await requestJevDecisions(state, ANSWER_GRADE_QUESTIONS, { settings, timeoutMs: 8_000 });
     return answerGradeOf(answers);
+  } catch {
+    return null;
+  }
+}
+
+/** 情绪曲线：给当前页打情绪分。返回 null 表示没法判断。 */
+export async function sampleEmotionWithJev(text: string): Promise<{ valence: number; intensity: number } | null> {
+  const settings = getJevSettings();
+  if (!text.trim() || !isJevConfigured(settings)) return null;
+  try {
+    const answers = await requestJevDecisions(buildPageState([{ text }]), EMOTION_QUESTIONS, { settings });
+    return emotionFromAnswers(answers);
   } catch {
     return null;
   }

@@ -12,6 +12,10 @@ export interface NovaExtras {
   stuckHint: boolean;
   /** 读完一章时问要不要做章末卡片（会打扰，默认关闭）。 */
   chapterCard: boolean;
+  /** 翻页时发现和其他书的联系（提到书架上的书、其他书里记下的概念）就提一句。 */
+  crossBook: boolean;
+  /** 用 Jev 给每页打情绪分，画成整本书的情绪曲线（需要配置 Jev）。 */
+  emotionCurve: boolean;
   /** AI 边注的画法：下划线，或只在句末画一个小墨点。 */
   aiNoteStyle: "underline" | "ink";
 }
@@ -22,6 +26,8 @@ export const DEFAULT_NOVA_EXTRAS: NovaExtras = {
   shelfLines: true,
   stuckHint: false,
   chapterCard: false,
+  crossBook: true,
+  emotionCurve: false,
   aiNoteStyle: "underline",
 };
 
@@ -40,6 +46,8 @@ export function normalizeNovaExtras(value: unknown): NovaExtras {
     shelfLines: pick("shelfLines"),
     stuckHint: pick("stuckHint"),
     chapterCard: pick("chapterCard"),
+    crossBook: pick("crossBook"),
+    emotionCurve: pick("emotionCurve"),
     aiNoteStyle: raw.aiNoteStyle === "ink" ? "ink" : "underline",
   };
 }
