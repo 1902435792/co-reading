@@ -122,10 +122,14 @@ const HeaderBar = () => {
       >
         <div
           className={`flex h-full items-center justify-start gap-x-2 transition-opacity duration-300 ${
-            showControls ? "opacity-100" : "opacity-0"
+            showControls ? "opacity-100" : "opacity-40"
           }`}
         >
-          <div className="cursor-pointer" onClick={swapSidebars ? toggleChatSidebar : toggleNotepadSidebar}>
+          <div
+            className="cursor-pointer"
+            title={swapSidebars ? "显示/隐藏 AI 侧栏" : "显示/隐藏笔记侧栏"}
+            onClick={swapSidebars ? toggleChatSidebar : toggleNotepadSidebar}
+          >
             {(swapSidebars ? isChatVisible : isNotepadVisible) ? (
               <TbLayoutSidebarLeftCollapseFilled className="size-5 text-neutral-700 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200" />
             ) : (
@@ -135,7 +139,11 @@ const HeaderBar = () => {
 
           <DropdownMenu open={isTocDropdownOpen} onOpenChange={handleToggleTocDropdown}>
             <DropdownMenuTrigger asChild>
-              <button className="btn btn-ghost flex h-6 w-6 items-center justify-center rounded-full p-0 outline-none focus:outline-none focus-visible:ring-0">
+              <button
+                type="button"
+                title="目录"
+                className="btn btn-ghost flex h-6 w-6 items-center justify-center rounded-full p-0 outline-none focus:outline-none focus-visible:ring-0"
+              >
                 <TableOfContents size={18} className="text-base-content" />
               </button>
             </DropdownMenuTrigger>
@@ -166,7 +174,7 @@ const HeaderBar = () => {
           <button
             type="button"
             onClick={handlePrevChapter}
-            className="flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-1 text-neutral-500 text-xs font-medium transition-colors hover:bg-muted/60 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+            className="flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-1 font-medium text-neutral-500 text-xs transition-colors hover:bg-muted/60 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
             title="上一章"
           >
             <ChevronLeft className="size-3.5" />
@@ -185,7 +193,7 @@ const HeaderBar = () => {
           <button
             type="button"
             onClick={handleNextChapter}
-            className="flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-1 text-neutral-500 text-xs font-medium transition-colors hover:bg-muted/60 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+            className="flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-1 font-medium text-neutral-500 text-xs transition-colors hover:bg-muted/60 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
             title="下一章"
           >
             <span>下一章</span>
@@ -195,12 +203,16 @@ const HeaderBar = () => {
 
         <div
           className={`flex h-full items-center justify-end space-x-2 ps-2 transition-opacity duration-300 ${
-            showControls ? "opacity-100" : "opacity-0"
+            showControls ? "opacity-100" : "opacity-40"
           }`}
         >
           <SearchDropdown />
           <SettingsDropdown />
-          <div className="cursor-pointer" onClick={swapSidebars ? toggleNotepadSidebar : toggleChatSidebar}>
+          <div
+            className="cursor-pointer"
+            title={swapSidebars ? "显示/隐藏笔记侧栏" : "显示/隐藏 AI 侧栏"}
+            onClick={swapSidebars ? toggleNotepadSidebar : toggleChatSidebar}
+          >
             {(swapSidebars ? isNotepadVisible : isChatVisible) ? (
               <TbLayoutSidebarRightCollapseFilled className="size-5 text-neutral-700 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200" />
             ) : (

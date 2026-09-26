@@ -1,0 +1,173 @@
+import { NovaCompanionModeControl } from "@/components/nova/nova-companion-mode-control";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useProviderStore } from "@/store/provider-store";
+import { fetch as fetchTauri } from "@tauri-apps/plugin-http";
+import { CheckCircle2, CircleAlert, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { openSettings } from "./open-settings";
+
+const DEFAULT_BRIDGE_ORIGIN = "http://127.0.0.1:3100";
+const NOVA_POSITION_KEY = "deepreader:nova-companion-position";
+
+function toOrigin(baseUrl?: string): string | null {
+  if (!baseUrl) return null;
+  try {
+    return new URL(baseUrl).origin;
+  } catch {
+    return null;
+  }
+}
+
+interface HealthBody {
+  ok?: boolean;
+  upstream?: { ok?: boolean; latencyMs?: number; status?: number };
+}
+
+type CheckState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "ok"; latencyMs: number; upstreamMs?: number }
+  | { status: "fail"; message: string };
+
+export default function CoReadingSettings() {
+  const { modelProviders } = useProviderStore();
+  const bridgeProviders = modelProviders.filter((provider) => /:3100(\/|$)/.test(provider.baseUrl ?? ""));
+  const [origin, setOrigin] = useState(() => toOrigin(bridgeProviders[0]?.baseUrl) ?? DEFAULT_BRIDGE_ORIGIN);
+  const [check, setCheck] = useState<CheckState>({ status: "idle" });
+  const [positionReset, setPositionReset] = useState(false);
+
+  const runCheck = async () => {
+    setCheck({ status: "checking" });
+    const startedAt = performance.now();
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 10_000);
+    try {
+      const response = await fetchTauri(`${origin.replace(/\/+$/, "")}/health?deep=1`, {
+        signal: controller.signal,
+      });
+      const body = (await response.json().catch(() => null)) as HealthBody | null;
+      const latencyMs = Math.round(performance.now() - startedAt);
+      if (response.ok && body?.ok !== false) {
+        setCheck({ status: "ok", latencyMs, upstreamMs: body?.upstream?.latencyMs });
+      } else if (body?.upstream && body.upstream.ok === false) {
+        setCheck({ status: "fail", message: "Bridge 在线，但上游 VCP 不可用：请确认 VCP 后端（vcp-main）已启动。" });
+      } else {
+        setCheck({ status: "fail", message: `Bridge 返回了 HTTP ${response.status}。` });
+      }
+    } catch (error) {
+      const aborted = error instanceof Error && error.name === "AbortError";
+      setCheck({
+        status: "fail",
+        message: aborted
+          ? "10 秒内没有响应：VCP 可能没有启动，或正在重建知识库。"
+          : `连接失败：${error instanceof Error ? error.message : String(error)}。请确认 VCP 已启动、地址正确。`,
+      });
+    } finally {
+      window.clearTimeout(timer);
+    }
+  };
+
+  return (
+    <div className="space-y-8 p-4 pt-3">
+      <section className="rounded-lg bg-muted/80 p-4">
+        <h2 className="text mb-1 dark:text-neutral-200">VCP Bridge 连接</h2>
+        <p className="mb-4 text-muted-foreground text-xs leading-relaxed">
+          共读和问答通过 VCP Bridge 调用 VCP 的 Agent。先在「模型提供商」里添加一个 OpenAI-compatible 提供商，基础 URL
+          填 <code>http://127.0.0.1:3100/v1</code>。
+        </p>
+
+        <div className="mb-3 text-xs">
+          {bridgeProviders.length > 0 ? (
+            <span className="text-muted-foreground">
+              已找到 {bridgeProviders.length} 个指向 Bridge 的提供商：
+              <span className="text-foreground">{bridgeProviders.map((provider) => provider.name).join("、")}</span>
+            </span>
+          ) : (
+            <span className="text-amber-700 dark:text-amber-300">
+              还没有指向 Bridge（端口 3100）的提供商。
+              <button
+                type="button"
+                className="ml-1 underline underline-offset-2"
+                onClick={() => openSettings("model-providers")}
+              >
+                去添加
+              </button>
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Input
+            value={origin}
+            onChange={(event) => setOrigin(event.target.value)}
+            className="h-8 flex-1 bg-background text-xs"
+            aria-label="Bridge 地址"
+            spellCheck={false}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8"
+            disabled={check.status === "checking"}
+            onClick={() => void runCheck()}
+          >
+            {check.status === "checking" && <Loader2 className="mr-1 size-3.5 animate-spin" />}
+            检查连接
+          </Button>
+        </div>
+
+        {check.status === "ok" && (
+          <p className="mt-2 flex items-center gap-1.5 text-emerald-700 text-xs dark:text-emerald-300">
+            <CheckCircle2 className="size-3.5" />
+            连接正常：Bridge 用时 {check.latencyMs} 毫秒
+            {check.upstreamMs != null && `，上游 VCP 响应 ${check.upstreamMs} 毫秒`}。
+          </p>
+        )}
+        {check.status === "fail" && (
+          <p className="mt-2 flex items-start gap-1.5 text-rose-700 text-xs dark:text-rose-300">
+            <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+            {check.message}
+          </p>
+        )}
+      </section>
+
+      <section className="rounded-lg bg-muted/80 p-4">
+        <h2 className="text mb-3 dark:text-neutral-200">共读模型</h2>
+        <ul className="list-disc space-y-1.5 pl-4 text-muted-foreground text-xs leading-relaxed">
+          <li>每本书的共读模型在阅读页右侧「共读」面板里选；不单独选择时，跟随问答当前选中的模型。</li>
+          <li>
+            模型 ID 写成 <code>Profile/模型</code>。自动共读推荐 <code>coreading-lite/gemini-3.8-flash-high</code>
+            ：只召回阅读相关记忆，速度更快。
+          </li>
+          <li>深度思考模型单次可能要 1–3 分钟；共读请求最长等 180 秒，超时后进度会保留，可以稍后重试。</li>
+          <li>
+            「共读日记」按钮使用专用路由 <code>deepreader-coreading-diary</code>，一般不用改。
+          </li>
+        </ul>
+      </section>
+
+      <section className="rounded-lg bg-muted/80 p-4">
+        <h2 className="text mb-1 dark:text-neutral-200">Nova 共读形象</h2>
+        <p className="mb-4 text-muted-foreground text-xs leading-relaxed">
+          开启共读后，Nova
+          会出现在阅读区右下角：读到哪里、想到什么都会用气泡告诉你，点击气泡可以跳到原文。可以拖动，双击头像回到默认位置。
+        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <NovaCompanionModeControl />
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            onClick={() => {
+              window.localStorage.removeItem(NOVA_POSITION_KEY);
+              setPositionReset(true);
+            }}
+          >
+            {positionReset ? "已重置，重新打开书后生效" : "重置 Nova 位置"}
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+}

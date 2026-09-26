@@ -1,20 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { useChatState } from "@/hooks/use-chat-state";
 import { createVisibleReadingPosition } from "@/lib/reading-position";
-import {
-  useReaderStore,
-  useReaderStoreApi,
-} from "@/pages/reader/components/reader-provider";
-import { useAppSettingsStore } from "@/store/app-settings-store";
+import { useReaderStore, useReaderStoreApi } from "@/pages/reader/components/reader-provider";
+import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
+import { openSettings } from "@/components/settings/open-settings";
 import { useThemeStore } from "@/store/theme-store";
 import type { ReadingFootprintTarget } from "@/types/co-reading";
-import {
-  BookOpenText,
-  History,
-  MessageCirclePlus,
-  MessagesSquare,
-  Settings,
-} from "lucide-react";
+import { BookOpenText, History, MessageCirclePlus, MessagesSquare, Settings } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ChatContainerRoot } from "../prompt-kit/chat-container";
 import { ScrollButton } from "../prompt-kit/scroll-button";
@@ -31,7 +23,6 @@ interface ChatContentProps {
 
 function ChatContent({ bookId }: ChatContentProps) {
   const readerStore = useReaderStoreApi();
-  const { toggleSettingsDialog } = useAppSettingsStore();
   const { autoScroll } = useThemeStore();
   const [toolDetail, setToolDetail] = useState<any>(null);
   const [showMindmapDialog, setShowMindmapDialog] = useState(false);
@@ -54,9 +45,7 @@ function ChatContent({ bookId }: ChatContentProps) {
       const docs =
         visibleDocs.length > 0
           ? [...new Set(visibleDocs)]
-          : contents
-              .map(({ doc }) => doc)
-              .filter((doc): doc is Document => Boolean(doc));
+          : contents.map(({ doc }) => doc).filter((doc): doc is Document => Boolean(doc));
       const fullText = docs
         .map((doc) => {
           if (!doc.body) return "";
@@ -139,24 +128,35 @@ function ChatContent({ bookId }: ChatContentProps) {
   };
 
   const EmptyState = () => (
-    <div className="flex h-full w-full flex-col overflow-y-auto p-2 pb-8">
-      <div className="flex flex-1 flex-col justify-end gap-3">
-        <div className="flex flex-col items-start gap-4 pl-2">
-          <div className="rounded-full bg-muted/70 p-3 shadow-md dark:bg-neutral-800/90">
-            <img
-              className="size-8"
-              src="https://www.notion.so/_assets/9ade71d75a1c0e93.png"
-              alt=""
-            />
+    <div className="flex h-full w-full flex-col overflow-y-auto p-3 pb-6">
+      <div className="flex flex-1 flex-col justify-end gap-4">
+        <div className="flex items-center gap-3">
+          <img
+            className="size-12 rounded-full border-2 border-white shadow-md dark:border-neutral-800"
+            src={NOVA_STATIC_AVATAR}
+            alt=""
+          />
+          <div>
+            <h3 className="font-semibold text-lg text-neutral-900 dark:text-neutral-50">问问这本书</h3>
+            <p className="text-muted-foreground text-xs">会结合你正在读的位置回答；选中文字后可以直接追问。</p>
           </div>
-          <div className="space-y-2">
-            <h3 className="font-semibold text-neutral-900 text-xl dark:text-neutral-50">
-              AI 阅读助手
-            </h3>
-            <p className="max-w-md text-sm dark:text-neutral-400">
-              直接提问，或使用下方的快捷按钮开始。
-            </p>
-          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            "总结一下这一章讲了什么",
+            "这一页有哪些关键概念？",
+            "解释一下我刚读到的这段",
+            "这部分和前面的内容有什么联系？",
+          ].map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              className="rounded-full border bg-background px-3 py-1 text-muted-foreground text-xs transition hover:border-primary/40 hover:text-foreground"
+              onClick={() => setInput(prompt)}
+            >
+              {prompt}
+            </button>
+          ))}
         </div>
       </div>
     </div>
@@ -178,6 +178,8 @@ function ChatContent({ bookId }: ChatContentProps) {
               variant="ghost"
               size="icon"
               className="z-40 size-7 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              title="新对话"
+              aria-label="新对话"
               onClick={handleNewThread}
             >
               <MessageCirclePlus className="h-5 w-5" />
@@ -186,6 +188,8 @@ function ChatContent({ bookId }: ChatContentProps) {
               variant="ghost"
               size="icon"
               className="z-40 size-7 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              title="历史对话"
+              aria-label="历史对话"
               onClick={handleShowThreads}
             >
               <History className="h-5 w-5" />
@@ -194,7 +198,9 @@ function ChatContent({ bookId }: ChatContentProps) {
               variant="ghost"
               size="icon"
               className="z-40 size-7 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700"
-              onClick={toggleSettingsDialog}
+              title="设置（模型提供商）"
+              aria-label="设置"
+              onClick={() => openSettings("model-providers")}
             >
               <Settings className="h-5 w-5" />
             </Button>
@@ -246,11 +252,7 @@ function ChatContent({ bookId }: ChatContentProps) {
         />
       )}
 
-      <MindmapDialog
-        open={showMindmapDialog}
-        onOpenChange={setShowMindmapDialog}
-        toolPart={toolDetail}
-      />
+      <MindmapDialog open={showMindmapDialog} onOpenChange={setShowMindmapDialog} toolPart={toolDetail} />
     </main>
   );
 }
@@ -260,7 +262,7 @@ type SideChatMode = "chat" | "co-reading";
 export default function SideChat({ bookId }: ChatContentProps) {
   const storageKey = `deepreader:side-chat-mode:${bookId ?? "global"}`;
   const readingFootprintTarget = useReaderStore(
-    (state) => state.pendingReadingFootprint
+    (state) => state.pendingReadingFootprint,
   ) as ReadingFootprintTarget | null;
   const [mode, setMode] = useState<SideChatMode>(() => {
     if (readingFootprintTarget) return "co-reading";
@@ -273,54 +275,48 @@ export default function SideChat({ bookId }: ChatContentProps) {
   }, [mode, storageKey]);
 
   useEffect(() => {
-    if (!readingFootprintTarget || readingFootprintTarget.bookId !== bookId)
-      return;
+    if (!readingFootprintTarget || readingFootprintTarget.bookId !== bookId) return;
     setMode("co-reading");
-    window.localStorage.setItem(
-      `deepreader:co-reading-expanded:${readingFootprintTarget.bookId}`,
-      "true"
-    );
+    window.localStorage.setItem(`deepreader:co-reading-expanded:${readingFootprintTarget.bookId}`, "true");
   }, [bookId, readingFootprintTarget]);
 
   return (
-    <div
-      id="chat-sidebar"
-      className="flex h-full flex-col overflow-hidden bg-background"
-    >
-      <div className="grid grid-cols-2 gap-1 border-b px-2 py-1.5">
-        <button
-          type="button"
-          className={`flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-colors ${
-            mode === "chat"
-              ? "bg-neutral-200 font-medium text-neutral-900 dark:bg-neutral-700 dark:text-neutral-50"
-              : "text-muted-foreground hover:bg-muted"
-          }`}
-          onClick={() => setMode("chat")}
-        >
-          <MessagesSquare className="size-3.5" />
-          问答
-        </button>
-        <button
-          type="button"
-          className={`flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-colors ${
-            mode === "co-reading"
-              ? "bg-primary/10 font-medium text-primary"
-              : "text-muted-foreground hover:bg-muted"
-          }`}
-          onClick={() => setMode("co-reading")}
-        >
-          <BookOpenText className="size-3.5" />
-          共读
-        </button>
+    <div id="chat-sidebar" className="flex h-full flex-col overflow-hidden bg-background">
+      <div className="border-b px-2 py-1.5">
+        <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-muted p-0.5">
+          <button
+            type="button"
+            title="问答：就书中内容提问"
+            className={`flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-all ${
+              mode === "chat"
+                ? "bg-background font-medium text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setMode("chat")}
+          >
+            <MessagesSquare className="size-3.5" />
+            问答
+          </button>
+          <button
+            type="button"
+            title="共读：Nova 跟着你读，写边注"
+            className={`flex h-7 items-center justify-center gap-1.5 rounded-md text-xs transition-all ${
+              mode === "co-reading"
+                ? "bg-background font-medium text-primary shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setMode("co-reading")}
+          >
+            <BookOpenText className="size-3.5" />
+            共读
+          </button>
+        </div>
       </div>
       <div className={mode === "chat" ? "min-h-0 flex-1" : "hidden"}>
         <ChatContent bookId={bookId} />
       </div>
       {mode === "co-reading" && bookId && (
-        <CoReadingPanelV2
-          bookId={bookId}
-          readingFootprintTarget={readingFootprintTarget}
-        />
+        <CoReadingPanelV2 bookId={bookId} readingFootprintTarget={readingFootprintTarget} />
       )}
     </div>
   );

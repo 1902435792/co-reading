@@ -21,7 +21,7 @@ const FONT_SIZE_STEP = 2;
 const SettingsDropdown = () => {
   const store = useReaderStoreApi();
   const { themeMode, setThemeMode } = useThemeStore();
-  const { settings, setSettings } = useAppSettingsStore();
+  const { settings, setSettings, toggleSettingsDialog } = useAppSettingsStore();
   const openDropdown = useReaderStore((state) => state.openDropdown);
   const setOpenDropdown = useReaderStore((state) => state.setOpenDropdown)!;
   const { fonts: customFontList, loadFonts } = useFontStore();
@@ -199,10 +199,12 @@ const SettingsDropdown = () => {
     <DropdownMenu open={isSettingsDropdownOpen} onOpenChange={handleToggleSettingsDropdown}>
       <DropdownMenuTrigger asChild>
         <button
-          className="btn btn-ghost flex h-8 min-h-8 w-8 items-center justify-center rounded-full p-0 outline-none focus:outline-none focus-visible:ring-0"
-          title="字体大小设置"
+          type="button"
+          className="btn btn-ghost flex h-7 min-h-7 items-center justify-center gap-1 rounded-full px-2 text-xs outline-none hover:bg-neutral-200 focus:outline-none focus-visible:ring-0 dark:hover:bg-neutral-700"
+          title="阅读设置：字体、字号、排版、主题、背景色"
         >
-          <Settings2 size={18} />
+          <Settings2 size={16} />
+          <span>设置</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-80 p-3" align="end" side="bottom" sideOffset={4}>
@@ -352,7 +354,7 @@ const SettingsDropdown = () => {
                   key={preset.id}
                   className={`relative flex size-7 items-center justify-center rounded-full border-2 transition-all ${
                     currentBgId === preset.id
-                      ? "border-primary shadow-md scale-110"
+                      ? "scale-110 border-primary shadow-md"
                       : "border-transparent hover:border-muted-foreground/40"
                   }`}
                   style={{
@@ -362,16 +364,23 @@ const SettingsDropdown = () => {
                   onClick={() => handleBgColorChange(preset.id)}
                   title={preset.name}
                 >
-                  {currentBgId === preset.id && (
-                    <MdCheck
-                      size={14}
-                      style={{ color: preset.fg || "currentColor" }}
-                    />
-                  )}
+                  {currentBgId === preset.id && <MdCheck size={14} style={{ color: preset.fg || "currentColor" }} />}
                 </button>
               ))}
             </div>
           </div>
+
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-md border-t pt-3 text-muted-foreground text-xs transition-colors hover:text-foreground"
+            onClick={() => {
+              setOpenDropdown(null);
+              toggleSettingsDialog();
+            }}
+          >
+            <span>全部设置（模型、AI 共读、外观、数据）</span>
+            <span aria-hidden>›</span>
+          </button>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

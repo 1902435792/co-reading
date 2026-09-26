@@ -1,14 +1,10 @@
 import ModelSelector from "@/components/side-chat/model-selector";
 import { NovaCompanionModeControl } from "@/components/nova/nova-companion-mode-control";
+import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
+import { openSettings } from "@/components/settings/open-settings";
 import { Button } from "@/components/ui/button";
-import {
-  getCoReadingErrorInfo,
-  groupCoReadingFailures,
-} from "@/lib/co-reading-core";
-import {
-  isBookCoReadingModelOverride,
-  resolveCoReadingModel,
-} from "@/lib/co-reading-model";
+import { getCoReadingErrorInfo, groupCoReadingFailures } from "@/lib/co-reading-core";
+import { isBookCoReadingModelOverride, resolveCoReadingModel } from "@/lib/co-reading-model";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
 import {
   getCoReadingRangeSnapshot,
@@ -47,21 +43,15 @@ interface CoReadingPanelV2Props {
   readingFootprintTarget?: ReadingFootprintTarget | null;
 }
 
-export function CoReadingPanelV2({
-  bookId,
-  readingFootprintTarget,
-}: CoReadingPanelV2Props) {
+export function CoReadingPanelV2({ bookId, readingFootprintTarget }: CoReadingPanelV2Props) {
   const snapshot = useReaderStore((state) => state.coReadingSnapshot);
-  const runtime = useReaderStore((state) => state.coReadingRuntime);
-  const bookTitle =
-    useReaderStore((state) => state.bookData?.book?.title) ?? "未命名书籍";
+  const runtime = useReaderStore((state) => state.coReadingRuntime)!;
+  const bookTitle = useReaderStore((state) => state.bookData?.book?.title) ?? "未命名书籍";
   const setSnapshot = useReaderStore((state) => state.setCoReadingSnapshot)!;
   const selectedModel = useProviderStore((state) => state.selectedModel);
   const providers = useProviderStore((state) => state.modelProviders);
   const storageKey = `deepreader:co-reading-expanded:${bookId}`;
-  const [expanded, setExpanded] = useState(
-    () => window.localStorage.getItem(storageKey) === "true"
-  );
+  const [expanded, setExpanded] = useState(() => window.localStorage.getItem(storageKey) !== "false");
   const [section, setSection] = useState<React.Key | null>("activity");
   const [dwellSeconds, setDwellSeconds] = useState(20);
   const [retryingFailed, setRetryingFailed] = useState(false);
@@ -73,51 +63,39 @@ export function CoReadingPanelV2({
       return;
     }
     const updateElapsed = () =>
-      setProcessingElapsedSeconds(
-        Math.max(
-          0,
-          Math.floor((Date.now() - runtime.processingStartedAt!) / 1_000)
-        )
-      );
+      setProcessingElapsedSeconds(Math.max(0, Math.floor((Date.now() - runtime.processingStartedAt!) / 1_000)));
     updateElapsed();
     const timer = window.setInterval(updateElapsed, 1_000);
     return () => window.clearInterval(timer);
   }, [runtime.isProcessing, runtime.processingStartedAt]);
 
-  useEffect(
-    () => window.localStorage.setItem(storageKey, String(expanded)),
-    [expanded, storageKey]
-  );
+  useEffect(() => window.localStorage.setItem(storageKey, String(expanded)), [expanded, storageKey]);
   useEffect(() => {
     if (snapshot) setDwellSeconds(snapshot.settings.dwellSeconds);
   }, [snapshot]);
   useEffect(() => {
-    if (!readingFootprintTarget || readingFootprintTarget.bookId !== bookId)
-      return;
+    if (!readingFootprintTarget || readingFootprintTarget.bookId !== bookId) return;
     setExpanded(true);
     setSection("map");
   }, [bookId, readingFootprintTarget]);
-  if (!snapshot)
-    return (
-      <div className="p-4 text-muted-foreground text-xs">正在载入 AI 共读…</div>
-    );
+  if (!snapshot) return <div className="p-4 text-muted-foreground text-xs">正在载入 AI 共读…</div>;
 
   const panel = {
     label:
       snapshot.settings.status === "off"
         ? "已关闭"
         : snapshot.settings.status === "paused"
-        ? "已暂停"
-        : getCoReadingRuntimeLabel({
-            status: snapshot.settings.status,
-            isProcessing: runtime.isProcessing,
-            runBlocked: runtime.runBlocked,
-            visibleQueuedBlockCount: runtime.visibleQueuedBlockCount,
-            visibleBlockCount: runtime.visibleBlockCount,
-            visibleTerminalBlockCount: runtime.visibleTerminalBlockCount,
-            visibleFailedBlockCount: runtime.visibleFailedBlockCount,
-            historicalQueuedBlockCount: runtime.historicalQueuedBlockCount,
-          }),
+          ? "已暂停"
+          : getCoReadingRuntimeLabel({
+              status: snapshot.settings.status,
+              isProcessing: runtime.isProcessing,
+              runBlocked: runtime.runBlocked,
+              visibleQueuedBlockCount: runtime.visibleQueuedBlockCount,
+              visibleBlockCount: runtime.visibleBlockCount,
+              visibleTerminalBlockCount: runtime.visibleTerminalBlockCount,
+              visibleFailedBlockCount: runtime.visibleFailedBlockCount,
+              historicalQueuedBlockCount: runtime.historicalQueuedBlockCount,
+            }),
     progress: `${snapshot.stats.annotated} 条边注`,
     lastMessage:
       runtime.error ||
@@ -125,25 +103,15 @@ export function CoReadingPanelV2({
         ? `正在完整阅读当前页的 ${runtime.processingBlockCount} 段正文（已等待 ${processingElapsedSeconds} 秒）`
         : "跟随当前可见页；整页读完后自主留下 0–3 条书评"),
   };
-  const model = resolveCoReadingModel(
-    snapshot.settings,
-    selectedModel,
-    providers
-  );
+  const model = resolveCoReadingModel(snapshot.settings, selectedModel, providers);
   const hasBookModelOverride = isBookCoReadingModelOverride(snapshot.settings);
   const failed = snapshot.blocks.filter((block) => block.status === "failed");
   const failedGroups = groupCoReadingFailures(failed);
-  const failedFocusCount = new Set(
-    failed.map((block) => block.focusKey?.trim() || block.blockKey)
-  ).size;
-  const modelLabel = model
-    ? `${model.providerName} / ${model.modelName}`
-    : "尚未选择可用模型";
+  const failedFocusCount = new Set(failed.map((block) => block.focusKey?.trim() || block.blockKey)).size;
+  const modelLabel = model ? `${model.providerName} / ${model.modelName}` : "尚未选择可用模型";
   const hasUnresolvedRangeTask = async () => {
     const rangeSnapshot = await getCoReadingRangeSnapshot(bookId);
-    return rangeSnapshot.tasks.some((task) =>
-      ["running", "paused", "failed"].includes(task.status)
-    );
+    return rangeSnapshot.tasks.some((task) => ["running", "paused", "failed"].includes(task.status));
   };
 
   const retryAllFailed = async () => {
@@ -160,7 +128,7 @@ export function CoReadingPanelV2({
       }
       const retried = await retryCoReadingBlocks(
         bookId,
-        failed.map((block) => block.blockKey)
+        failed.map((block) => block.blockKey),
       );
       if (retried === 0) {
         setSnapshot(await getCoReadingSnapshot(bookId));
@@ -174,9 +142,7 @@ export function CoReadingPanelV2({
           dwellSeconds: snapshot.settings.dwellSeconds,
         });
       }
-      window.dispatchEvent(
-        new CustomEvent("deepreader:co-reading-retry", { detail: { bookId } })
-      );
+      window.dispatchEvent(new CustomEvent("deepreader:co-reading-retry", { detail: { bookId } }));
       const latest = await getCoReadingSnapshot(bookId);
       setSnapshot(latest);
       toast.success(`已重新排队 ${retried} 个文本块，并恢复普通跟读。`);
@@ -197,14 +163,10 @@ export function CoReadingPanelV2({
       dwellSeconds: number;
       modelProviderId: string;
       modelId: string;
-    }>
+    }>,
   ) => {
     try {
-      if (
-        updates.status != null &&
-        updates.status !== "paused" &&
-        (await hasUnresolvedRangeTask())
-      ) {
+      if (updates.status != null && updates.status !== "paused" && (await hasUnresolvedRangeTask())) {
         toast.info("范围阅读进行、暂停或等待续跑期间，普通跟读必须保持暂停。");
         return;
       }
@@ -220,47 +182,67 @@ export function CoReadingPanelV2({
       toast.error(getCoReadingErrorInfo(error).message);
     }
   };
-  const saveStatus = (status: "off" | "active" | "paused") =>
-    changeSettings({ status });
+  const saveStatus = (status: "off" | "active" | "paused") => changeSettings({ status });
   const saveDwell = () => changeSettings({ dwellSeconds });
   const changeModel = (next: SelectedModel) =>
     changeSettings({ modelProviderId: next.providerId, modelId: next.modelId });
-  const clearBookModel = () =>
-    changeSettings({ modelProviderId: "", modelId: "" });
+  const clearBookModel = () => changeSettings({ modelProviderId: "", modelId: "" });
 
   const header = (
-    <button
-      type="button"
-      className="flex w-full items-center gap-3 rounded-xl border bg-gradient-to-r from-primary/5 to-background p-3 text-left shadow-sm transition hover:border-primary/40"
-      aria-expanded={expanded}
-      onClick={() => setExpanded((value) => !value)}
-    >
-      <span className="rounded-lg bg-primary/10 p-2 text-primary">
-        <Sparkles className="size-4" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <strong className="text-sm">Agent</strong>
+    <div className="flex items-center gap-1 rounded-xl border bg-gradient-to-r from-primary/10 via-primary/5 to-background p-2 shadow-sm">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 text-left"
+        aria-expanded={expanded}
+        title={expanded ? "收起共读详情" : "展开共读详情"}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <span className="relative shrink-0">
+          <img
+            src={NOVA_STATIC_AVATAR}
+            alt=""
+            className="size-10 rounded-full border-2 border-white shadow-sm dark:border-neutral-800"
+          />
           <i
-            className={`size-2 rounded-full ${
+            className={`absolute right-0 bottom-0 size-3 rounded-full border-2 border-background ${
               snapshot.settings.status === "active"
-                ? "bg-emerald-500"
+                ? runtime.isProcessing
+                  ? "animate-pulse bg-sky-500"
+                  : "bg-emerald-500"
                 : snapshot.settings.status === "paused"
-                ? "bg-amber-500"
-                : "bg-neutral-400"
+                  ? "bg-amber-500"
+                  : "bg-neutral-400"
             }`}
           />
         </span>
-        <span className="block truncate text-muted-foreground text-xs">
-          {panel.label} · {panel.progress}
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <strong className="text-sm">Nova 共读</strong>
+            <span className="rounded-full bg-background/80 px-1.5 py-px text-[10px] text-muted-foreground">
+              {panel.progress}
+            </span>
+          </span>
+          <span className="block truncate text-muted-foreground text-xs">
+            {runtime.isProcessing ? panel.lastMessage : panel.label}
+          </span>
         </span>
-      </span>
-      {expanded ? (
-        <ChevronDown className="size-4 text-muted-foreground" />
-      ) : (
-        <ChevronRight className="size-4 text-muted-foreground" />
-      )}
-    </button>
+        {expanded ? (
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+        )}
+      </button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0 rounded-full text-muted-foreground"
+        title="共读设置（Bridge 自检、Nova 形象）"
+        aria-label="共读设置"
+        onClick={() => openSettings("co-reading")}
+      >
+        <Settings2 className="size-4" />
+      </Button>
+    </div>
   );
 
   return (
@@ -273,8 +255,8 @@ export function CoReadingPanelV2({
               snapshot.settings.status === "active"
                 ? "border-emerald-300 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-950/20"
                 : snapshot.settings.status === "paused"
-                ? "border-amber-300 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/20"
-                : "bg-card"
+                  ? "border-amber-300 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/20"
+                  : "bg-card"
             }`}
           >
             <div className="flex items-center justify-between gap-3">
@@ -285,15 +267,15 @@ export function CoReadingPanelV2({
                     snapshot.settings.status === "active"
                       ? "text-emerald-700 dark:text-emerald-300"
                       : snapshot.settings.status === "paused"
-                      ? "text-amber-700 dark:text-amber-300"
-                      : "text-muted-foreground"
+                        ? "text-amber-700 dark:text-amber-300"
+                        : "text-muted-foreground"
                   }`}
                 >
                   {snapshot.settings.status === "active"
                     ? "● 正在跟随你当前阅读的位置"
                     : snapshot.settings.status === "paused"
-                    ? "Ⅱ 已暂停，不会继续读取当前页面"
-                    : "○ 已关闭"}
+                      ? "Ⅱ 已暂停，不会继续读取当前页面"
+                      : "○ 已关闭"}
                 </p>
               </div>
               {snapshot.settings.status === "active" ? (
@@ -307,15 +289,9 @@ export function CoReadingPanelV2({
                   暂停
                 </Button>
               ) : (
-                <Button
-                  size="sm"
-                  disabled={!model}
-                  onClick={() => void saveStatus("active")}
-                >
+                <Button size="sm" disabled={!model} onClick={() => void saveStatus("active")}>
                   <Play className="mr-1 size-3" />
-                  {snapshot.settings.status === "paused"
-                    ? "恢复跟读"
-                    : "开始跟读"}
+                  {snapshot.settings.status === "paused" ? "恢复跟读" : "开始跟读"}
                 </Button>
               )}
             </div>
@@ -339,18 +315,14 @@ export function CoReadingPanelV2({
             <div className="mt-3 flex items-center gap-3 rounded-lg bg-background/70 px-2.5 py-2">
               <Clock3 className="size-4 text-primary" />
               <label className="flex flex-1 items-center gap-2 text-xs">
-                <span className="shrink-0">
-                  停留 {dwellSeconds} 秒后交给 Agent
-                </span>
+                <span className="shrink-0">停留 {dwellSeconds} 秒后交给 Agent</span>
                 <input
                   type="range"
                   min={5}
                   max={60}
                   step={5}
                   value={dwellSeconds}
-                  onChange={(event) =>
-                    setDwellSeconds(Number(event.target.value))
-                  }
+                  onChange={(event) => setDwellSeconds(Number(event.target.value))}
                   onPointerUp={() => void saveDwell()}
                   className="min-w-0 flex-1"
                 />
@@ -376,16 +348,12 @@ export function CoReadingPanelV2({
             </p>
           )}
           <CoReadingDiaryAction bookId={bookId} bookTitle={bookTitle} />
-          <Accordion
-            expandedValue={section}
-            onValueChange={setSection}
-            className="divide-y rounded-xl border bg-card"
-          >
+          <Accordion expandedValue={section} onValueChange={setSection} className="divide-y rounded-xl border bg-card">
             <AccordionItem value="activity">
               <AccordionTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm">
                 <Clock3 className="size-4 text-primary" />
                 当前活动
-                <span className="ml-auto text-muted-foreground text-xs">
+                <span className="ml-auto max-w-[60%] truncate text-muted-foreground text-xs" title={panel.lastMessage}>
                   {panel.lastMessage}
                 </span>
               </AccordionTrigger>
@@ -396,9 +364,7 @@ export function CoReadingPanelV2({
                     历史待处理
                   </div>
                   <div className="rounded bg-muted p-2">
-                    <b className="block text-base">
-                      {snapshot.stats.annotated}
-                    </b>
+                    <b className="block text-base">{snapshot.stats.annotated}</b>
                     边注
                   </div>
                   <div className="rounded bg-muted p-2">
@@ -423,11 +389,7 @@ export function CoReadingPanelV2({
                 阅读地图
               </AccordionTrigger>
               <AccordionContent className="px-3 pb-3">
-                <CoReadingRangeMap
-                  bookId={bookId}
-                  mode="map"
-                  readingFootprintTarget={readingFootprintTarget}
-                />
+                <CoReadingRangeMap bookId={bookId} mode="map" readingFootprintTarget={readingFootprintTarget} />
               </AccordionContent>
             </AccordionItem>
             <AccordionItem value="failures">
@@ -459,8 +421,7 @@ export function CoReadingPanelV2({
                           }`}
                         >
                           <CircleAlert className="mr-1 inline size-3" />
-                          {group.focusCount} 个页面焦点（{group.blockCount}{" "}
-                          段正文） · {group.message}
+                          {group.focusCount} 个页面焦点（{group.blockCount} 段正文） · {group.message}
                         </div>
                       ))}
                     </div>
