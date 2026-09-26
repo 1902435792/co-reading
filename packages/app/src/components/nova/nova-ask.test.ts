@@ -36,3 +36,19 @@ test("clipNovaAskText trims long selections", () => {
 test("cleanNovaAnswer strips markdown marks", () => {
   assert.equal(cleanNovaAnswer("## 标题\n- **重点**在这里\n\n\n\n结束"), "标题\n重点在这里\n\n结束");
 });
+
+test("buildNovaAskPrompt adds the reading scene when available", () => {
+  const { prompt } = buildNovaAskPrompt({
+    action: "connect",
+    text: "选中",
+    sectionLabel: "第三章",
+    percent: 41.6,
+    recap: "  主角刚到长安。 ",
+    recentNotes: ["第一条", "", "第二条", "第三条", "第四条"],
+  });
+  assert.match(prompt, /阅读进度：约 42%/);
+  assert.match(prompt, /前情提要：主角刚到长安。/);
+  assert.match(prompt, /「第一条」 「第二条」 「第三条」/);
+  assert.doesNotMatch(prompt, /第四条/);
+  assert.ok(prompt.indexOf("章节：第三章") < prompt.indexOf("读者选中的文字"));
+});

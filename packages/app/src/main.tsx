@@ -1,3 +1,4 @@
+import { NovaDiaryHost } from "@/components/nova/nova-diary";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
@@ -24,5 +25,6 @@ createRoot(document.getElementById("root")!).render(
       <ReaderLayout />
     </HashRouter>
     <Toaster position="top-center" />
+    <NovaDiaryHost />
   </QueryClientProvider>,
 );

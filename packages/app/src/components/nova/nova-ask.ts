@@ -45,7 +45,18 @@ export interface NovaAskPromptInput {
   text: string;
   bookTitle?: string;
   sectionLabel?: string;
+  /** 阅读现场：全书进度 0–100。 */
+  percent?: number | null;
+  /** 阅读现场：共读的前情提要。 */
+  recap?: string;
+  /** 阅读现场：最近几条 AI 边注。 */
+  recentNotes?: readonly string[];
 }
+
+const clipLine = (value: string, max: number) => {
+  const clean = value.replace(/\s+/g, " ").trim();
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+};
 
 export function buildNovaAskPrompt(input: NovaAskPromptInput): { system: string; prompt: string } {
   const book = input.bookTitle ? `《${input.bookTitle}》` : "这本书";
@@ -53,14 +64,26 @@ export function buildNovaAskPrompt(input: NovaAskPromptInput): { system: string;
     `你是 Nova，正在和读者一起读${book}的伙伴。`,
     "用亲切、口语化的简体中文回答，像朋友聊天。",
     "一般不超过 180 字；不要用 Markdown 标题、加粗或列表符号；只依据给出的文字和常识，不剧透后文。",
+    "章节、进度、前情提要和边注只是背景，回答要聚焦读者选中的文字。",
   ].join("");
+  const scene: string[] = [];
+  if (input.sectionLabel) scene.push(`章节：${input.sectionLabel}`);
+  if (typeof input.percent === "number" && Number.isFinite(input.percent)) {
+    scene.push(`阅读进度：约 ${Math.round(input.percent)}%`);
+  }
+  if (input.recap?.trim()) scene.push(`前情提要：${clipLine(input.recap, 400)}`);
+  const notes = (input.recentNotes ?? [])
+    .map((note) => clipLine(note, 80))
+    .filter(Boolean)
+    .slice(0, 3);
+  if (notes.length > 0) scene.push(`你最近写的边注：${notes.map((note) => `「${note}」`).join(" ")}`);
   const lines = [
-    input.sectionLabel ? `章节：${input.sectionLabel}` : "",
+    ...scene,
     "读者选中的文字：",
     `"""${clipNovaAskText(input.text)}"""`,
     "",
     `任务：${NOVA_ASK_ACTIONS[input.action].instruction}`,
-  ].filter((line, index) => index > 0 || line);
+  ];
   return { system, prompt: lines.join("\n") };
 }
 

@@ -20,14 +20,14 @@ export function CoReadingDiaryAction({
         <div className="min-w-0">
           <p className="flex items-center gap-2 font-semibold text-sm">
             <NotebookPen className="size-4 text-primary" />
-            Agent
+            共读日记
           </p>
           <p className="mt-1 text-muted-foreground text-xs">
             选择尚未写入的共读记录，交给 VCP 后端整理并写入日记。
           </p>
         </div>
         <Button type="button" variant="outline" onClick={() => setOpen(true)}>
-          Agent
+          写日记
         </Button>
       </section>
       <CoReadingDiaryDialog

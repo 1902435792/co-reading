@@ -1,4 +1,5 @@
 import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
+import { checkDiaryProposal, toastDiaryProposal } from "@/components/nova/nova-diary";
 import { getNovaExtras } from "@/components/nova/nova-extras";
 import { activeMsFromStats, buildReadingSummary, isLateNight, progressPercent } from "@/components/nova/nova-moments";
 import { SessionState } from "@/types/reading-session";
@@ -11,10 +12,11 @@ export function useReadingSummary(bookId: string | null) {
   const sessionStats = useReaderStore((state) => state.sessionStats);
   const pageinfo = useReaderStore((state) => state.progress?.pageinfo);
   const annotated = useReaderStore((state) => state.coReadingSnapshot?.stats.annotated ?? null);
+  const bookTitle = useReaderStore((state) => state.bookData?.book?.title) ?? "这本书";
 
   const percent = progressPercent(pageinfo);
-  const latestRef = useRef({ sessionStats, percent, annotated });
-  latestRef.current = { sessionStats, percent, annotated };
+  const latestRef = useRef({ sessionStats, percent, annotated, bookTitle });
+  latestRef.current = { sessionStats, percent, annotated, bookTitle };
   const startRef = useRef<{ percent: number | null; annotated: number | null }>({ percent: null, annotated: null });
 
   useEffect(() => {
@@ -27,22 +29,31 @@ export function useReadingSummary(bookId: string | null) {
   useEffect(() => {
     if (!bookId) return;
     return () => {
-      if (!getNovaExtras().sessionSummary) return;
+      const extras = getNovaExtras();
       const latest = latestRef.current;
       const start = startRef.current;
       const now = Date.now();
       const stats = latest.sessionStats;
+      const activeMs = activeMsFromStats(
+        stats
+          ? {
+              totalActiveTime: stats.totalActiveTime,
+              lastActivityTime: stats.lastActivityTime,
+              isActive: stats.currentState === SessionState.ACTIVE,
+            }
+          : null,
+        now,
+      );
+      // 合书时，读得够久、又有新的共读记录，就提议写进日记（只提议，不自动写）。
+      if (extras.diaryPrompt) {
+        const title = latest.bookTitle;
+        void checkDiaryProposal({ bookId, trigger: "close", activeMs }).then((proposal) => {
+          if (proposal) toastDiaryProposal(proposal, bookId, title);
+        });
+      }
+      if (!extras.sessionSummary) return;
       const summary = buildReadingSummary({
-        activeMs: activeMsFromStats(
-          stats
-            ? {
-                totalActiveTime: stats.totalActiveTime,
-                lastActivityTime: stats.lastActivityTime,
-                isActive: stats.currentState === SessionState.ACTIVE,
-              }
-            : null,
-          now,
-        ),
+        activeMs,
         startPercent: start.percent,
         endPercent: latest.percent,
         annotations: Math.max(0, (latest.annotated ?? 0) - (start.annotated ?? latest.annotated ?? 0)),

@@ -130,7 +130,7 @@ export function CoReadingDiaryDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <NotebookPen className="size-5 text-primary" />
-            Agent
+            共读日记
           </DialogTitle>
           <DialogDescription className="px-0">
             从《{bookTitle}》尚未写入的共读记录中选取最近一段阅读脉络，使用问答
@@ -167,7 +167,7 @@ export function CoReadingDiaryDialog({
                     setRequestedCount(Number(event.target.value))
                   }
                   disabled={isSubmitting}
-                  aria-label="自定义 Agent 记录条数"
+                  aria-label="自定义写入条数"
                 />
               </label>
             </div>

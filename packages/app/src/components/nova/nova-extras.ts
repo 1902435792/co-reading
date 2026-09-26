@@ -14,6 +14,8 @@ export interface NovaExtras {
   chapterCard: boolean;
   /** 翻页时发现和其他书的联系（提到书架上的书、其他书里记下的概念）就提一句。 */
   crossBook: boolean;
+  /** 合书、读完一本书、做完章末卡片时，提议把共读写进 VCP 日记（只提议，不自动写）。 */
+  diaryPrompt: boolean;
   /** 用 Jev 给每页打情绪分，画成整本书的情绪曲线（需要配置 Jev）。 */
   emotionCurve: boolean;
   /** AI 边注的画法：下划线，或只在句末画一个小墨点。 */
@@ -27,6 +29,7 @@ export const DEFAULT_NOVA_EXTRAS: NovaExtras = {
   stuckHint: false,
   chapterCard: false,
   crossBook: true,
+  diaryPrompt: true,
   emotionCurve: false,
   aiNoteStyle: "underline",
 };
@@ -47,6 +50,7 @@ export function normalizeNovaExtras(value: unknown): NovaExtras {
     stuckHint: pick("stuckHint"),
     chapterCard: pick("chapterCard"),
     crossBook: pick("crossBook"),
+    diaryPrompt: pick("diaryPrompt"),
     emotionCurve: pick("emotionCurve"),
     aiNoteStyle: raw.aiNoteStyle === "ink" ? "ink" : "underline",
   };

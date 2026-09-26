@@ -29,6 +29,7 @@ import {
 } from "@/services/jev-service";
 import { getMemories } from "@/services/memory-service";
 import { useLibraryStore } from "@/store/library-store";
+import { useProviderStore } from "@/store/provider-store";
 import { generateText } from "ai";
 import { NOVA_IMAGE_BY_NAME, NOVA_LATE_NIGHT_IMAGE, NOVA_STATIC_AVATAR, pickNovaImage } from "./nova-assets";
 import { type ChapterCard, buildChapterCardPrompt, parseChapterCardJson, shouldOfferChapterCard } from "./chapter-card";
@@ -57,7 +58,9 @@ import {
   loadCrossBookShown,
   rememberCrossBookShown,
 } from "./nova-crossbook";
-import { activeMsFromStats, formatActiveDuration, isLateNight } from "./nova-moments";
+import { checkDiaryProposal, openCoReadingDiary } from "./nova-diary";
+import { coReadingProfileAdvice } from "./nova-memory";
+import { activeMsFromStats, formatActiveDuration, isLateNight, progressPercent } from "./nova-moments";
 
 interface NovaBubble {
   id: number;
@@ -559,6 +562,52 @@ function NovaCompanionInner({
     return () => window.clearTimeout(timer);
   }, [pageKey]);
 
+  // ---------- 读完一本书：提议写日记 ----------
+  const finishedProposedRef = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 只在翻页时检查
+  useEffect(() => {
+    if (finishedProposedRef.current || !extras.diaryPrompt) return;
+    const percent = progressPercent(storeApi.getState().progress?.pageinfo);
+    if (percent === null || percent < 99) return;
+    finishedProposedRef.current = true;
+    void checkDiaryProposal({ bookId, trigger: "finished" }).then((proposal) => {
+      if (!proposal) return;
+      react("found", 4_000);
+      say({
+        kind: "info",
+        title: "Nova · 读完啦",
+        text: `${proposal.title}${proposal.description}`,
+        ttl: 30_000,
+        actions: [
+          { label: "写日记", primary: true, onClick: () => openCoReadingDiary(bookId, bookTitle) },
+          { label: "下次吧", onClick: () => setBubble(null) },
+        ],
+      });
+    });
+  }, [pageKey]);
+
+  // ---------- Profile 体检：自动共读用了带 OneRing 的 Profile 时提醒一次 ----------
+  const coReadingModelId = snapshot.settings.modelId;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 只在共读模型变化时检查
+  useEffect(() => {
+    const modelId = coReadingModelId || useProviderStore.getState().selectedModel?.modelId;
+    const advice = coReadingProfileAdvice(modelId);
+    if (advice?.level !== "warn") return;
+    const key = `deepreader:nova-profile-advice:${advice.profile}`;
+    if (window.localStorage.getItem(key)) return;
+    const timer = window.setTimeout(() => {
+      window.localStorage.setItem(key, String(Date.now()));
+      say({
+        kind: "info",
+        title: "Nova · 小建议",
+        text: advice.message,
+        ttl: 30_000,
+        actions: [{ label: "知道了", onClick: () => setBubble(null) }],
+      });
+    }, 12_000);
+    return () => window.clearTimeout(timer);
+  }, [coReadingModelId]);
+
   // ---------- 章末卡片 ----------
   const cardBusyRef = useRef(false);
   const currentActiveMs = () => {
@@ -621,12 +670,16 @@ function NovaCompanionInner({
       };
       setChapterCards(saveChapterCard(card));
       react("found", 4_000);
+      const diary = extras.diaryPrompt ? await checkDiaryProposal({ bookId, trigger: "chapter-card" }) : null;
       say({
         kind: "answer",
         title,
-        text: `「${label}」的卡片做好啦！`,
+        text: diary ? `「${label}」的卡片做好啦！${diary.title}${diary.description}` : `「${label}」的卡片做好啦！`,
         ttl: 0,
-        actions: [{ label: "打开卡片", primary: true, onClick: () => setOpenCard(card) }],
+        actions: [
+          { label: "打开卡片", primary: true, onClick: () => setOpenCard(card) },
+          ...(diary ? [{ label: "写进日记", onClick: () => openCoReadingDiary(bookId, bookTitle) }] : []),
+        ],
       });
       setOpenCard(card);
     } catch (error) {
@@ -694,11 +747,19 @@ function NovaCompanionInner({
     say({ kind: "answer", title, text: meta.thinking, quote, ttl: 0 });
     const timer = window.setTimeout(() => controller.abort(), NOVA_ASK_TIMEOUT_MS);
     try {
+      const progress = storeApi.getState().progress;
       const { system, prompt } = buildNovaAskPrompt({
         action,
         text,
         bookTitle,
-        sectionLabel: storeApi.getState().progress?.sectionLabel,
+        sectionLabel: progress?.sectionLabel,
+        percent: progressPercent(progress?.pageinfo),
+        recap: snapshotRef.current.settings.rollingSummary,
+        recentNotes: notes
+          .filter(isAiAnnotation)
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, 3)
+          .map((note) => note.note ?? ""),
       });
       const model = resolveCoReadingAgentModel(snapshotRef.current.settings);
       const result = await generateText({
@@ -934,6 +995,7 @@ function NovaCompanionInner({
                   </ContextMenuSubContent>
                 </ContextMenuSub>
               )}
+              <ContextMenuItem onSelect={() => openCoReadingDiary(bookId, bookTitle)}>写共读日记…</ContextMenuItem>
               <ContextMenuItem
                 onSelect={() => {
                   setEmotionPoints(loadEmotionPoints(bookId));
