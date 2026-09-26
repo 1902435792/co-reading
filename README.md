@@ -53,6 +53,13 @@ DeepReader 将电子书阅读、AI 对话、自动共读、人工笔记、AI 书
 - 普通跟读与范围阅读在提交边界互斥，避免两条任务链同时修改同一阅读状态。
 - 可将已有 AI 共读记录整理为独立共读日记；日记写入与普通自动共读决策相互隔离。
 
+### Nova 共读形象
+
+- 开启共读后，Nova 以可拖动的动画形象出现在阅读区右下角，会根据共读状态切换 10 种表情（思考、阅读、写批注、出错等）。
+- 新书评会以漫画气泡的形式逐字出现，点击气泡可以跳到对应原文。
+- 可以在共读面板或「设置 → AI 共读与 Nova」里切换「形象＋气泡 / 只要气泡 / 关闭」；双击头像回到默认位置。
+- 动画资源随应用打包，按需懒加载，不需要联网。
+
 ## 支持的书籍格式
 
 当前公开图书导入入口支持：
@@ -76,7 +83,7 @@ DeepReader 将电子书阅读、AI 对话、自动共读、人工笔记、AI 书
 
 ### 首次配置
 
-阅读和本地图书管理不要求模型服务。使用 AI 对话、自动共读、AI 书评或记忆能力前，请在设置中配置：
+阅读和本地图书管理不要求模型服务。使用 AI 对话、自动共读、AI 书评或记忆能力前，请在「设置 → AI → 模型提供商」中配置：
 
 - Provider 类型；
 - Base URL；
@@ -84,6 +91,12 @@ DeepReader 将电子书阅读、AI 对话、自动共读、人工笔记、AI 书
 - 模型名称。
 
 如需全书语义检索，可另外配置 embedding 模型。联网搜索、语音和 Obsidian 集成均为可选能力。
+
+设置入口：
+
+- 阅读页顶栏右侧的「设置」：字体、字号、滚动 / 分页、主题和背景色；底部「全部设置」打开完整设置；
+- 右侧 AI 栏「问答」页的齿轮：直接打开「模型提供商」；「共读」页的齿轮：直接打开「AI 共读与 Nova」；
+- 完整设置按 **通用**（外观、字体管理）、**AI**（模型提供商、AI 共读与 Nova、联网与记忆、向量模型、语音朗读）、**数据**（数据与隐私、关于）分组。
 
 ## 可选：VCP Bridge 集成
 
@@ -106,12 +119,13 @@ DeepReader 可以通过 OpenAI-compatible Provider 接入 VCP Bridge。推荐为
 
 ### 快速配置
 
-1. 在 DeepReader「设置 → 模型服务」中添加 OpenAI-compatible Provider：
+1. 在 DeepReader「设置 → AI → 模型提供商」中添加 OpenAI-compatible Provider：
    - 基础 URL：`http://127.0.0.1:3100/v1`（不要把 Profile 写进 URL）；
    - API Key：VCP 主服务的访问 Key；
    - 点击「获取模型」即可检查连接——Bridge 会返回上游 VCP 的真实模型列表。
 2. 模型 ID 使用 `<profile>/<model>` 形式，例如自动共读推荐 `coreading-lite/gemini-3.8-flash-high`。
-3. 在书籍的共读设置里选择该模型。
+3. 在书籍的共读面板里选择该模型。
+4. 打开「设置 → AI → AI 共读与 Nova」，点击「检查连接」：会自动识别指向 3100 端口的提供商，并显示 Bridge 和上游 VCP 的响应耗时。
 
 ### 推荐的共读 Profile
 
@@ -126,7 +140,7 @@ Bridge 侧的 Profile 可以设置可选字段 `promptCacheTtlSec`（0–3600 �
 ### 超时与排错
 
 - 深度思考模型（如 `gemini-3.8-flash-high`）单次共读可能需要 1–3 分钟。DeepReader 的共读请求超时为 180 秒，超时后不会立即重复请求，进度会保留，可以稍后重试。
-- 连接失败时，先确认 VCP 后端已启动，再在浏览器打开 `http://127.0.0.1:3100/health?deep=1`：`ok: true` 表示 Bridge 和上游都可用，`upstream.latencyMs` 是上游响应耗时。
+- 连接失败时，先确认 VCP 后端已启动，再用「设置 → AI 共读与 Nova → 检查连接」自检，或在浏览器打开 `http://127.0.0.1:3100/health?deep=1`：`ok: true` 表示 Bridge 和上游都可用，`upstream.latencyMs` 是上游响应耗时。
 - 共读很慢时，优先改用 `coreading-lite`；VCP 主进程在重建知识库时也可能短暂卡顿。
 
 ## 从源码开发
@@ -137,7 +151,7 @@ Bridge 侧的 Profile 可以设置可选字段 `promptCacheTtlSec`（0–3600 �
 - pnpm 9 或更高版本；
 - Rust stable toolchain；
 - Tauri 2 所需系统依赖；
-- Windows 构建需要 Visual Studio C++ Build Tools 与 WebView2；
+- Windows 构建需要 Visual Studio C++ Build Tools 与 WebView2（没有 Visual Studio 时可以改用 GNU 工具链，见下文）；
 - macOS 构建需要 Xcode Command Line Tools。
 
 ### 安装依赖
@@ -158,9 +172,11 @@ pnpm dev
 
 ```bash
 cd packages/app
-pnpm exec tsc --noEmit
+pnpm exec tsc --noEmit -p tsconfig.app.json
 pnpm build
 ```
+
+注意：`packages/app` 下直接运行 `tsc --noEmit` 不会检查任何文件，必须加 `-p tsconfig.app.json`。
 
 ### 共读测试
 
@@ -201,6 +217,45 @@ packages/app/src-tauri/target/release/bundle/nsis/
 ```bash
 pnpm build
 ```
+
+### 没有 Visual Studio 时：使用 GNU 工具链构建
+
+Rust 的 msvc 工具链必须依赖 Visual Studio 的 C++ 链接器。如果不想安装 Visual Studio Build Tools（约 6–8 GB），可以改用 GNU 工具链（约 1 GB）：
+
+1. 安装 Rust GNU 工具链（不会改变默认工具链）：
+
+   ```bash
+   rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
+   ```
+
+2. 下载 [WinLibs](https://winlibs.com/) 的 MinGW-w64 GCC（x86_64、UCRT、posix-seh 的 zip 包），解压到例如 `D:\tools\mingw64`。它是绿色版，不需要修改系统 PATH。
+3. 复制一份 sidecar，改成 GNU 目标的文件名：
+
+   ```bash
+   cd packages/app/src-tauri/binaries
+   cp woff2_compress-x86_64-pc-windows-msvc.exe woff2_compress-x86_64-pc-windows-gnu.exe
+   ```
+
+4. 在 Git Bash 中只为这次构建设置环境变量：
+
+   ```bash
+   TC="$RUSTUP_HOME/toolchains/stable-x86_64-pc-windows-gnu"   # 默认是 ~/.rustup/toolchains/...
+   export RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu
+   export RUSTC="$TC/bin/rustc.exe"
+   export CARGO_TARGET_DIR="$PWD/packages/app/src-tauri/target-gnu"
+   export CARGO_BUILD_JOBS=4
+   export PATH="$TC/bin:/d/tools/mingw64/bin:$PATH"
+   cd packages/app && pnpm tauri build --bundles nsis
+   ```
+
+   产物位于 `packages/app/src-tauri/target-gnu/release/bundle/nsis/`。生成的 exe 只依赖 Windows 系统 DLL。
+
+常见问题：
+
+- **`link: missing operand` / 找不到 `link.exe`**：msvc 工具链找不到 Visual Studio 链接器（Git Bash 自带的 `/usr/bin/link` 不是它），请改用上面的 GNU 流程。
+- **`can't find crate for std`、`only metadata stub found`、`handle_alloc_error`、`0xc0000409`**：通常是内存不足（16 GB 内存时默认 16 个并行任务太多），或者和旧 msvc 编译缓存混用了。请设置 `CARGO_BUILD_JOBS=4`，并使用单独的 `CARGO_TARGET_DIR`。
+- **`resource path binaries\woff2_compress-x86_64-pc-windows-gnu.exe doesn't exist`**：没有完成第 3 步。
+- **下载 WiX 失败**：MSI 安装包需要联网下载 WiX，只构建 NSIS 时加 `--bundles nsis`。
 
 ## 项目结构
 
