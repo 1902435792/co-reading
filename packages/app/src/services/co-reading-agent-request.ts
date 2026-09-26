@@ -79,7 +79,11 @@ export async function requestCoReadingStructuredObject<T>(
         }
       }
       const info = getCoReadingErrorInfo(error);
-      if (!info.retryable || attempt + 1 >= STRUCTURED_REQUEST_MAX_ATTEMPTS) {
+      if (
+        !info.retryable ||
+        info.kind === "timeout" ||
+        attempt + 1 >= STRUCTURED_REQUEST_MAX_ATTEMPTS
+      ) {
         throw new Error(info.message, { cause: error });
       }
       await wait(STRUCTURED_REQUEST_RETRY_DELAY_MS, externalSignal);

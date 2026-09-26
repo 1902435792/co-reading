@@ -25,6 +25,10 @@ import {
   parseCoReadingSelectionText,
 } from "./co-reading-decision-parser";
 
+// 深度思考模型（如经 VCP Bridge 的 gemini-3.8-flash-high）单次可能需要 1–3 分钟。
+const CO_READING_REQUEST_TIMEOUT_MS = 180_000;
+const CO_READING_DECISION_TIMEOUT_MS = 120_000;
+
 export {
   coReadingBatchDecisionSchema,
   coReadingDecisionSchema,
@@ -105,7 +109,7 @@ export async function requestCoReadingItem(
       return result.object;
     },
     parseCoReadingItemResultText,
-    90_000,
+    CO_READING_REQUEST_TIMEOUT_MS,
     externalSignal
   );
 }
@@ -144,7 +148,7 @@ export async function requestCoReadingReview(
       return result.object;
     },
     parseCoReadingReviewResultText,
-    90_000
+    CO_READING_REQUEST_TIMEOUT_MS
   );
 }
 
@@ -205,7 +209,7 @@ export async function requestCoReadingBatchDecision(
       return result.object;
     },
     parseCoReadingBatchDecisionText,
-    90_000
+    CO_READING_REQUEST_TIMEOUT_MS
   );
 }
 
@@ -239,6 +243,6 @@ export async function requestCoReadingDecision(
       return result.object;
     },
     parseCoReadingDecisionText,
-    60_000
+    CO_READING_DECISION_TIMEOUT_MS
   );
 }

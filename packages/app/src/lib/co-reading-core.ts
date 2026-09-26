@@ -116,7 +116,7 @@ export function getCoReadingErrorInfo(error: unknown): CoReadingErrorInfo {
   }
   if (/timeout|timed out|aborterror|超时/u.test(normalized)) {
     return {
-      message: "共读请求超时，请检查网络或切换响应更快的模型后重试。",
+      message: "共读请求超时：深度思考模型单次可能需要 1–3 分钟，VCP 后台检索记忆时也会变慢。进度已保留，可稍后重试；也可改用 coreading-lite Profile 或更快的模型。",
       fatal: false,
       retryable: true,
       kind: "timeout",
@@ -126,7 +126,7 @@ export function getCoReadingErrorInfo(error: unknown): CoReadingErrorInfo {
     /fetch failed|network|socket|econn|connection|连接失败/u.test(normalized)
   ) {
     return {
-      message: "无法连接模型服务，请确认 VCP Bridge 与网络可用后重试。",
+      message: "无法连接模型服务：请确认 VCP 后端（vcp-main）已启动，可在浏览器打开 http://127.0.0.1:3100/health?deep=1 自检后重试。",
       fatal: false,
       retryable: true,
       kind: "network",

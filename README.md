@@ -104,6 +104,31 @@ DeepReader 可以通过 OpenAI-compatible Provider 接入 VCP Bridge。推荐为
 - VCP Bridge 是可选外部组件，不随 DeepReader 安装包一同分发；
 - 不要把 API Key、访问令牌、私人日记或 Provider 配置提交到仓库。
 
+### 快速配置
+
+1. 在 DeepReader「设置 → 模型服务」中添加 OpenAI-compatible Provider：
+   - 基础 URL：`http://127.0.0.1:3100/v1`（不要把 Profile 写进 URL）；
+   - API Key：VCP 主服务的访问 Key；
+   - 点击「获取模型」即可检查连接——Bridge 会返回上游 VCP 的真实模型列表。
+2. 模型 ID 使用 `<profile>/<model>` 形式，例如自动共读推荐 `coreading-lite/gemini-3.8-flash-high`。
+3. 在书籍的共读设置里选择该模型。
+
+### 推荐的共读 Profile
+
+| Profile | 用途 | 说明 |
+| --- | --- | --- |
+| `coreading-lite` | 自动共读（推荐） | 只召回阅读相关记忆，不注入日记写入指南、不写入长期记忆；展开后的提示词缓存 10 分钟，后续批次不再重复检索 |
+| `coreading` | 自动共读（完整记忆版） | 召回全部日记与元思考，上下文约为精简版的 2 倍多，速度更慢 |
+| `deepreader-coreading-diary` | 共读日记写入 | 由「共读日记」按钮调用的专用路由 |
+
+Bridge 侧的 Profile 可以设置可选字段 `promptCacheTtlSec`（0–3600 秒）：在这段时间内复用已展开的记忆提示词，适合频繁的自动批注；缺省为 0，即每次都实时检索。
+
+### 超时与排错
+
+- 深度思考模型（如 `gemini-3.8-flash-high`）单次共读可能需要 1–3 分钟。DeepReader 的共读请求超时为 180 秒，超时后不会立即重复请求，进度会保留，可以稍后重试。
+- 连接失败时，先确认 VCP 后端已启动，再在浏览器打开 `http://127.0.0.1:3100/health?deep=1`：`ok: true` 表示 Bridge 和上游都可用，`upstream.latencyMs` 是上游响应耗时。
+- 共读很慢时，优先改用 `coreading-lite`；VCP 主进程在重建知识库时也可能短暂卡顿。
+
 ## 从源码开发
 
 ### 环境要求
