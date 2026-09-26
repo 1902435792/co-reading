@@ -23,6 +23,7 @@ import {
   type VisibleQueuedFocus,
 } from "@/lib/co-reading-run-state";
 import { requestCoReadingItem } from "@/services/co-reading-ai-service";
+import { evaluateCoReadingPageWithJev } from "@/services/jev-service";
 import {
   claimCoReadingBlocks,
   completeCoReadingBatch,
@@ -350,13 +351,30 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
       });
 
       try {
-        const decision = await requestCoReadingItem(
-          { ...batch, newBlocks: claimed },
-          currentSnapshot.settings,
+        // 可选的 Jev 预筛：目录、版权页等不值得批注的页直接记为“已静默读完”，不再等待共读 Agent。
+        // 未开启、未配置或请求失败时返回 null，照常走原流程。
+        const gate = await evaluateCoReadingPageWithJev(
+          claimed,
           controller.signal
         );
         assertCurrentFocus();
-        const validated = validateCoReadingItemResult(decision, claimed);
+        let validated: {
+          summary?: string;
+          annotations: ReturnType<
+            typeof validateCoReadingItemResult
+          >["annotations"];
+        };
+        if (gate?.skip) {
+          validated = { annotations: [] };
+        } else {
+          const decision = await requestCoReadingItem(
+            { ...batch, newBlocks: claimed },
+            currentSnapshot.settings,
+            controller.signal
+          );
+          assertCurrentFocus();
+          validated = validateCoReadingItemResult(decision, claimed);
+        }
         const preparedNotes = await Promise.all(
           validated.annotations.map((annotation) =>
             prepareAiAnnotation(

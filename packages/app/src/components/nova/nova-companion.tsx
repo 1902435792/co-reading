@@ -6,7 +6,8 @@ import type { CoReadingSourceTarget } from "@/types/co-reading";
 import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "framer-motion";
 import { ChevronRight, Minus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { NOVA_STATIC_AVATAR, pickNovaImage } from "./nova-assets";
+import { classifyNovaReactionWithJev } from "@/services/jev-service";
+import { NOVA_IMAGE_BY_NAME, NOVA_STATIC_AVATAR, pickNovaImage } from "./nova-assets";
 import { setNovaCompanionMode, useNovaCompanionMode } from "./nova-companion-mode";
 import { NOVA_ONE_SHOT_MOODS, type NovaMood, buildNovaAnimation } from "./nova-lottie";
 import { NovaLottiePlayer } from "./nova-lottie-player";
@@ -25,6 +26,8 @@ interface NovaBubble {
 interface NovaReaction {
   mood: NovaMood;
   until: number;
+  /** Jev 挑出的具体表情；不填时按 mood 随机选。 */
+  image?: string;
 }
 
 const POSITION_KEY = "deepreader:nova-companion-position";
@@ -172,6 +175,7 @@ function NovaCompanionInner({
 
   // 新边注：打开书之前已有的边注不播报。
   const knownNoteIdsRef = useRef<Set<string> | null>(null);
+  const latestAnnotationIdRef = useRef<string | null>(null);
   useEffect(() => {
     const aiNotes = notes.filter(isAiAnnotation);
     if (!knownNoteIdsRef.current) {
@@ -186,6 +190,13 @@ function NovaCompanionInner({
     const block = snapshot.blocks.find((item) => item.annotationId === newest.id);
     const mood = fresh.length > 1 ? "found" : getAnnotationReaction(newest.note);
     react(mood, 5_000);
+    // 可选：让 Jev 根据书评情绪换一张更贴切的表情（未开启或失败时保持上面的表情）。
+    latestAnnotationIdRef.current = newest.id;
+    void classifyNovaReactionWithJev(newest.text ?? "", newest.note ?? "").then((choice) => {
+      if (!choice || latestAnnotationIdRef.current !== newest.id) return;
+      const image = NOVA_IMAGE_BY_NAME[choice.image];
+      setReaction({ mood: choice.mood, until: Date.now() + 5_000, image });
+    });
     const noteText = newest.note || "我在这里留了一条边注～";
     say({
       kind: "annotation",
@@ -247,7 +258,7 @@ function NovaCompanionInner({
   const [imageSeed, setImageSeed] = useState(() => nextSeed());
   // biome-ignore lint/correctness/useExhaustiveDependencies: 状态变化时换表情
   useEffect(() => setImageSeed(nextSeed()), [mood]);
-  const imageUrl = pickNovaImage(mood, imageSeed);
+  const imageUrl = reaction?.image && reaction.mood === mood ? reaction.image : pickNovaImage(mood, imageSeed);
   const animationData = useMemo(() => buildNovaAnimation(mood, imageUrl), [mood, imageUrl]);
 
   const onPet = () => {

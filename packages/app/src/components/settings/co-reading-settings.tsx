@@ -6,6 +6,7 @@ import { fetch as fetchTauri } from "@tauri-apps/plugin-http";
 import { CheckCircle2, CircleAlert, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { openSettings } from "./open-settings";
+import { JevSettingsSection } from "./jev-settings-section";
 
 const DEFAULT_BRIDGE_ORIGIN = "http://127.0.0.1:3100";
 const NOVA_POSITION_KEY = "deepreader:nova-companion-position";
@@ -146,6 +147,8 @@ export default function CoReadingSettings() {
           </li>
         </ul>
       </section>
+
+      <JevSettingsSection />
 
       <section className="rounded-lg bg-muted/80 p-4">
         <h2 className="text mb-1 dark:text-neutral-200">Nova 共读形象</h2>

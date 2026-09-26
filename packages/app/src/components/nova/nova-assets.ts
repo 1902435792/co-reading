@@ -44,6 +44,22 @@ export const NOVA_IMAGES: Record<NovaMood, readonly string[]> = {
   pet: [petBlush, petHeart, petPat, petShy],
 };
 
+/** 按文件名（不含扩展名）取表情，供 Jev 选表情时使用。 */
+export const NOVA_IMAGE_BY_NAME: Record<string, string> = {
+  "talk-agree": talkAgree,
+  "talk-fun": talkFun,
+  "talk-great": talkGreat,
+  "talk-wow": talkWow,
+  "found-eureka": foundEureka,
+  "found-joy": foundJoy,
+  "found-stars": foundStars,
+  "think-hard": thinkHard,
+  "think-tilt": thinkTilt,
+  "error-cry": errorCry,
+  "error-aggrieved": errorAggrieved,
+  "error-stunned": errorStunned,
+};
+
 export function pickNovaImage(mood: NovaMood, seed: number): string {
   const images = NOVA_IMAGES[mood];
   return images[Math.abs(Math.floor(seed)) % images.length] ?? idleEnergetic;
