@@ -492,6 +492,7 @@ function NovaCompanionInner({
   }, [extras.crossBook]);
   const crossBookAtRef = useRef(0);
   const emotionSampledRef = useRef(new Set<string>());
+  const emotionBusyRef = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: 只在翻页时触发
   useEffect(() => {
     if (!pageKey || !isTabVisible) return;
@@ -548,15 +549,27 @@ function NovaCompanionInner({
         }
       }
 
-      if (extras.emotionCurve && jevReady && text.length >= 80 && !emotionSampledRef.current.has(pageKey)) {
+      if (
+        extras.emotionCurve &&
+        jevReady &&
+        !emotionBusyRef.current &&
+        text.length >= 80 &&
+        !emotionSampledRef.current.has(pageKey)
+      ) {
         const info = state.progress?.pageinfo;
         if (!info || !(info.total > 0)) return;
         emotionSampledRef.current.add(pageKey);
         const fraction = info.current / info.total;
         const sectionLabel = state.progress?.sectionLabel || undefined;
-        void sampleEmotionWithJev(text).then((result) => {
-          if (result) setEmotionPoints(saveEmotionPoint(bookId, { at: Date.now(), fraction, sectionLabel, ...result }));
-        });
+        emotionBusyRef.current = true;
+        void sampleEmotionWithJev(text)
+          .then((result) => {
+            if (result)
+              setEmotionPoints(saveEmotionPoint(bookId, { at: Date.now(), fraction, sectionLabel, ...result }));
+          })
+          .finally(() => {
+            emotionBusyRef.current = false;
+          });
       }
     }, 3_000);
     return () => window.clearTimeout(timer);
@@ -610,6 +623,9 @@ function NovaCompanionInner({
 
   // ---------- 章末卡片 ----------
   const cardBusyRef = useRef(false);
+  const cardAbortRef = useRef<AbortController | null>(null);
+  // 关掉阅读页时中止还在生成的卡片。
+  useEffect(() => () => cardAbortRef.current?.abort(), []);
   const currentActiveMs = () => {
     const stats = storeApi.getState().sessionStats;
     return stats
@@ -643,6 +659,9 @@ function NovaCompanionInner({
     setCollapsed(false);
     react("thinking", 120_000);
     say({ kind: "answer", title, text: `正在给「${label}」做卡片…`, ttl: 0 });
+    const controller = new AbortController();
+    cardAbortRef.current = controller;
+    const timer = window.setTimeout(() => controller.abort(), 120_000);
     try {
       const text = await readSectionText(index);
       if (text.trim().length < 200) throw new Error("这一章文字太少，或者这种格式暂时拿不到整章文字");
@@ -655,7 +674,7 @@ function NovaCompanionInner({
         maxOutputTokens: 1_200,
         temperature: 0.4,
         maxRetries: 0,
-        abortSignal: AbortSignal.timeout(120_000),
+        abortSignal: controller.signal,
       });
       const content = parseChapterCardJson(result.text);
       if (!content) throw new Error("卡片格式没解析出来，再试一次？");
@@ -686,10 +705,14 @@ function NovaCompanionInner({
       react("error", 3_000);
       say({
         kind: "error",
-        text: `卡片没做成：${shortenNovaText(error instanceof Error ? error.message : String(error))}`,
+        text: controller.signal.aborted
+          ? "卡片做太久了（超过 2 分钟），先放弃了，稍后再试试？"
+          : `卡片没做成：${shortenNovaText(error instanceof Error ? error.message : String(error))}`,
         ttl: 10_000,
       });
     } finally {
+      window.clearTimeout(timer);
+      if (cardAbortRef.current === controller) cardAbortRef.current = null;
       cardBusyRef.current = false;
     }
   };
