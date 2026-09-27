@@ -31,7 +31,7 @@ import { getMemories } from "@/services/memory-service";
 import { useLibraryStore } from "@/store/library-store";
 import { useProviderStore } from "@/store/provider-store";
 import { generateText } from "ai";
-import { NOVA_IMAGE_BY_NAME, NOVA_LATE_NIGHT_IMAGE, NOVA_STATIC_AVATAR, pickNovaImage } from "./nova-assets";
+import { NOVA_LATE_NIGHT_IMAGE, NOVA_STATIC_AVATAR, pickNovaImage, pickReactionImage } from "./nova-assets";
 import { type ChapterCard, buildChapterCardPrompt, parseChapterCardJson, shouldOfferChapterCard } from "./chapter-card";
 import { ChapterCardDialog } from "./chapter-card-dialog";
 import { type EmotionPoint, loadEmotionPoints, saveEmotionPoint } from "./emotion-curve";
@@ -349,7 +349,7 @@ function NovaCompanionInner({
         if (!result) return;
         if (result.worth !== null) saveNoteWorth(note.id, result.worth);
         if (!isNewest || !result.reaction || latestAnnotationIdRef.current !== newest.id) return;
-        const image = NOVA_IMAGE_BY_NAME[result.reaction.image];
+        const image = pickReactionImage(result.reaction.image, Date.now());
         setReaction({ mood: result.reaction.mood, until: Date.now() + 5_000, image });
       });
     }
