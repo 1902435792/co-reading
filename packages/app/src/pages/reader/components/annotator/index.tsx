@@ -21,6 +21,17 @@ import { useReaderStore, useReaderStoreApi } from "../reader-provider";
 import AnnotationPopup from "./annotation-popup";
 import AskAIPopup from "./ask-ai-popup";
 
+/** 墨点命中探测偏移：原位、往左（横排句末）、往上（竖排列末）。墨点半径 2.5–4.5px，离文字 2px。 */
+const INK_HIT_PROBES: ReadonlyArray<readonly [number, number]> = [
+  [0, 0],
+  [-6, 0],
+  [-11, 0],
+  [-16, 0],
+  [0, -6],
+  [0, -11],
+  [0, -16],
+];
+
 function NovaIcon({ size = 16 }: { size?: number }) {
   return <img src={NOVA_STATIC_AVATAR} alt="" width={size} height={size} className="rounded-full" />;
 }
@@ -78,14 +89,18 @@ const Annotator: React.FC = () => {
       .view?.renderer.getContents()
       .find((item) => item.doc === doc);
     const overlayer = content?.overlayer as { hitTest?: (point: { x: number; y: number }) => unknown[] } | undefined;
-    const [key] = (overlayer?.hitTest?.({ x: event.clientX, y: event.clientY }) ?? []) as [string?];
-    const note = key
-      ? store
-          .getState()
-          .config?.booknotes?.find(
-            (item) => (item.cfi === key || item.id === key) && item.author === "ai" && !item.deletedAt && item.note,
-          )
-      : undefined;
+    const booknotes = store.getState().config?.booknotes ?? [];
+    // hitTest 只认句子文字本身的矩形，而墨点画在句末外侧几像素处；
+    // 鼠标落在墨点上时往左（竖排往上）探几下，找到它所属的句子。
+    let note: BookNote | undefined;
+    for (const [dx, dy] of INK_HIT_PROBES) {
+      const [key] = (overlayer?.hitTest?.({ x: event.clientX + dx, y: event.clientY + dy }) ?? []) as [string?];
+      if (!key) continue;
+      note = booknotes.find(
+        (item) => (item.cfi === key || item.id === key) && item.author === "ai" && !item.deletedAt && item.note,
+      );
+      if (note) break;
+    }
     if (!note?.note) {
       setInkTip((current) => (current ? null : current));
       return;
@@ -267,7 +282,7 @@ const Annotator: React.FC = () => {
     <div>
       {inkTip && (
         <div
-          className="pointer-events-none fixed z-50 w-72 rounded-xl border-2 border-amber-300 bg-amber-50 px-3 py-2 text-amber-950 text-xs leading-relaxed shadow-lg dark:border-amber-800 dark:bg-amber-950/90 dark:text-amber-50"
+          className="pointer-events-none fixed z-50 w-72 rounded-xl border-2 border-amber-300 bg-amber-50 px-3 py-2 text-amber-950 text-xs leading-relaxed shadow-lg dark:border-amber-800 dark:bg-amber-950 dark:text-amber-50"
           style={{
             left: Math.max(8, Math.min(inkTip.x + 12, window.innerWidth - 300)),
             top: Math.max(8, Math.min(inkTip.y + 16, window.innerHeight - 170)),
