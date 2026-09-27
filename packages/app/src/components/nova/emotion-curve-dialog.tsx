@@ -59,10 +59,10 @@ export function EmotionCurveDialog({
                     <rect x="0" y={chart.zeroY} width={WIDTH} height={HEIGHT - chart.zeroY} />
                   </clipPath>
                 </defs>
-                <text x="8" y="16" className="fill-amber-600 text-[10px]">
+                <text x="8" y="16" className="fill-amber-600 text-[10px] dark:fill-amber-400">
                   明亮
                 </text>
-                <text x="8" y={HEIGHT - 8} className="fill-sky-600 text-[10px]">
+                <text x="8" y={HEIGHT - 8} className="fill-sky-600 text-[10px] dark:fill-sky-400">
                   低沉
                 </text>
                 <line

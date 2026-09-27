@@ -943,7 +943,7 @@ function NovaCompanionInner({
                 type="button"
                 title="收起 Nova"
                 aria-label="收起 Nova"
-                className="flex size-5 items-center justify-center rounded-full border bg-background/90 text-muted-foreground shadow-sm hover:text-foreground"
+                className="flex size-5 items-center justify-center rounded-full border bg-background/90 text-muted-foreground shadow-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => setCollapsed(true)}
               >
                 <Minus className="size-3" />
@@ -952,7 +952,7 @@ function NovaCompanionInner({
                 type="button"
                 title="隐藏 Nova（可在共读面板重新打开）"
                 aria-label="隐藏 Nova"
-                className="flex size-5 items-center justify-center rounded-full border bg-background/90 text-muted-foreground shadow-sm hover:text-foreground"
+                className="flex size-5 items-center justify-center rounded-full border bg-background/90 text-muted-foreground shadow-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => setNovaCompanionMode("off")}
               >
                 <X className="size-3" />
@@ -1081,11 +1081,11 @@ function NovaSpeechBubble({
   const isAnnotation = bubble.kind === "annotation" && bubble.target;
   const tone =
     bubble.kind === "error"
-      ? "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/80 dark:text-rose-100"
+      ? "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100"
       : bubble.kind === "annotation"
-        ? "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/80 dark:text-amber-50"
+        ? "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-50"
         : bubble.kind === "answer"
-          ? "border-sky-300 bg-sky-50 text-sky-950 dark:border-sky-800 dark:bg-sky-950/80 dark:text-sky-50"
+          ? "border-sky-300 bg-sky-50 text-sky-950 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-50"
           : "border-border bg-background text-foreground";
   const content = (
     <>
@@ -1130,13 +1130,17 @@ function NovaSpeechBubble({
         <button
           type="button"
           aria-label="关闭气泡"
-          className="absolute top-1.5 right-1.5 rounded-full p-0.5 opacity-50 hover:opacity-100"
+          className="absolute top-1 right-1 rounded-full p-1 opacity-50 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onClose}
         >
           <X className="size-3" />
         </button>
         {isAnnotation ? (
-          <button type="button" className="block w-full pr-3 text-left" onClick={onOpenSource}>
+          <button
+            type="button"
+            className="block w-full rounded-lg pr-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onOpenSource}
+          >
             {content}
           </button>
         ) : (
@@ -1149,7 +1153,7 @@ function NovaSpeechBubble({
                 key={action.label}
                 type="button"
                 onClick={action.onClick}
-                className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors ${
+                className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   action.primary
                     ? "border-transparent bg-foreground text-background hover:opacity-90"
                     : "border-black/15 bg-background/70 hover:bg-background dark:border-white/20"

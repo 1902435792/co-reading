@@ -19,12 +19,28 @@ export function NovaCompanionModeControl() {
             type="button"
             role="radio"
             aria-checked={mode === option.value}
-            className={`rounded px-2 py-0.5 transition-colors ${
+            tabIndex={mode === option.value ? 0 : -1}
+            className={`rounded px-2 py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               mode === option.value
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
             onClick={() => setNovaCompanionMode(option.value)}
+            onKeyDown={(event) => {
+              const step =
+                event.key === "ArrowRight" || event.key === "ArrowDown"
+                  ? 1
+                  : event.key === "ArrowLeft" || event.key === "ArrowUp"
+                    ? -1
+                    : 0;
+              if (!step) return;
+              event.preventDefault();
+              const index = OPTIONS.findIndex((item) => item.value === mode);
+              const next = OPTIONS[(index + step + OPTIONS.length) % OPTIONS.length]!;
+              setNovaCompanionMode(next.value);
+              const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role=radio]");
+              buttons?.[OPTIONS.indexOf(next)]?.focus();
+            }}
           >
             {option.label}
           </button>

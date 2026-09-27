@@ -89,7 +89,7 @@ export function ChapterCardDialog({
         <div className="space-y-5 px-4 py-4 text-sm">
           <div className="flex gap-3">
             <img src={NOVA_STATIC_AVATAR} alt="" className="size-9 shrink-0 rounded-full border" />
-            <p className="rounded-2xl rounded-tl-sm bg-amber-50 px-3 py-2 leading-relaxed dark:bg-amber-950/60">
+            <p className="rounded-2xl rounded-tl-sm border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950 leading-relaxed dark:border-amber-800 dark:bg-amber-950 dark:text-amber-50">
               {card.summary}
             </p>
           </div>
