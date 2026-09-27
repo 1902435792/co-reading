@@ -177,6 +177,7 @@ const Annotator: React.FC = () => {
         color: hexColor,
         strength: inkStrength((annotation as BookNote).note, getNoteWorth((annotation as BookNote).id)),
         vertical: writingMode.startsWith("vertical"),
+        bounds: { width: doc.documentElement.scrollWidth, height: doc.documentElement.scrollHeight },
       });
       return;
     }
@@ -285,11 +286,15 @@ const Annotator: React.FC = () => {
           className="pointer-events-none fixed z-50 w-72 rounded-xl border-2 border-amber-300 bg-amber-50 px-3 py-2 text-amber-950 text-xs leading-relaxed shadow-lg dark:border-amber-800 dark:bg-amber-950 dark:text-amber-50"
           style={{
             left: Math.max(8, Math.min(inkTip.x + 12, window.innerWidth - 300)),
-            top: Math.max(8, Math.min(inkTip.y + 16, window.innerHeight - 170)),
+            // 鼠标在屏幕下半部分时浮窗往上开，避免章末、页底的边注被窗口底边截断
+            ...(inkTip.y > window.innerHeight * 0.55
+              ? { bottom: Math.max(8, window.innerHeight - inkTip.y + 12) }
+              : { top: Math.max(8, inkTip.y + 16) }),
+            maxHeight: "min(60vh, 28rem)",
           }}
         >
           <span className="mb-1 block font-semibold text-[11px] opacity-70">Nova 的边注 · 点击查看详情</span>
-          <span className="line-clamp-6 block whitespace-pre-line">{inkTip.text}</span>
+          <span className="line-clamp-[16] block whitespace-pre-line">{inkTip.text}</span>
         </div>
       )}
       {showAnnotPopup &&

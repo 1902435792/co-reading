@@ -48,3 +48,21 @@ test("rememberNoteWorth caps entries and keeps the newest", () => {
   assert.equal(Object.keys(map).join(","), "n3,n4,n2");
   assert.equal(map.n2, 1);
 });
+
+test("inkDotGeometry skips whitespace-only trailing rects", () => {
+  const geometry = inkDotGeometry([rect(10, 10, 200, 20), rect(210, 10, 1, 20)], false);
+  assert.equal(geometry?.cx, 210 + (geometry?.r ?? 0) + 2);
+});
+
+test("inkDotGeometry stays inside the overlay bounds", () => {
+  const bounds = { width: 300, height: 400 };
+  const edge = inkDotGeometry([rect(10, 380, 290, 16)], false, bounds);
+  assert.ok(edge);
+  assert.ok(edge.cx + edge.r * 1.9 <= bounds.width);
+  assert.ok(edge.cy + edge.r * 1.9 <= bounds.height);
+  const inside = inkDotGeometry([rect(10, 10, 100, 20)], false, bounds);
+  assert.equal(inside?.cx, 110 + (inside?.r ?? 0) + 2);
+  const column = inkDotGeometry([rect(100, 0, 20, 398)], true, bounds);
+  assert.ok(column);
+  assert.ok(column.cy + column.r * 1.9 <= bounds.height);
+});

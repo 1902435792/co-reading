@@ -15,16 +15,37 @@ export interface InkDotGeometry {
   r: number;
 }
 
-/** 墨点放在最后一行文字的末尾（竖排时放在最后一列的下方）。 */
-export function inkDotGeometry(rects: readonly InkRect[], vertical: boolean): InkDotGeometry | null {
+/**
+ * 墨点放在最后一行文字的末尾（竖排时放在最后一列的下方）。
+ * - 跳过段末只有空白或换行的窄矩形（章末最后一句常见），免得墨点落到空白处；
+ * - 给了 bounds（批注层的宽高）时，句末贴边放不下就挪到行尾下方，并整体收进边界内，避免被裁掉一半。
+ */
+export function inkDotGeometry(
+  rects: readonly InkRect[],
+  vertical: boolean,
+  bounds?: { width: number; height: number },
+): InkDotGeometry | null {
   const list = rects.filter((rect) => rect.width > 0 && rect.height > 0);
-  const last = list[list.length - 1];
+  const solid = list.filter((rect) => (vertical ? rect.height : rect.width) >= 3);
+  const pool = solid.length > 0 ? solid : list;
+  const last = pool[pool.length - 1];
   if (!last) return null;
   const size = vertical ? last.width : last.height;
   const r = Math.round(Math.max(2.5, Math.min(4.5, size * 0.18)) * 10) / 10;
-  return vertical
+  let geometry = vertical
     ? { cx: last.left + last.width / 2, cy: last.bottom + r + 2, r }
     : { cx: last.right + r + 2, cy: last.top + last.height / 2, r };
+  if (bounds && bounds.width > 0 && bounds.height > 0) {
+    const pad = Math.ceil(r * 1.9) + 1; // 光晕半径
+    if (!vertical && geometry.cx + pad > bounds.width) {
+      geometry = { cx: last.right - r, cy: last.bottom + r + 2, r };
+    } else if (vertical && geometry.cy + pad > bounds.height) {
+      geometry = { cx: last.left - r - 2, cy: last.bottom - r, r };
+    }
+    const clamp = (value: number, max: number) => Math.min(Math.max(value, pad), Math.max(pad, max - pad));
+    geometry = { cx: clamp(geometry.cx, bounds.width), cy: clamp(geometry.cy, bounds.height), r };
+  }
+  return geometry;
 }
 
 /**
@@ -93,10 +114,15 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 /** foliate Overlayer 的自定义画法：draw(rects, options) 返回一个 SVG 元素。 */
 export function drawInkDot(
   rects: ArrayLike<InkRect>,
-  options: { color?: string; strength?: number; vertical?: boolean } = {},
+  options: {
+    color?: string;
+    strength?: number;
+    vertical?: boolean;
+    bounds?: { width: number; height: number };
+  } = {},
 ): SVGElement {
   const group = document.createElementNS(SVG_NS, "g");
-  const geometry = inkDotGeometry(Array.from(rects), Boolean(options.vertical));
+  const geometry = inkDotGeometry(Array.from(rects), Boolean(options.vertical), options.bounds);
   if (!geometry) return group;
   const color = options.color || "#3b82f6";
   const halo = document.createElementNS(SVG_NS, "circle");
