@@ -2,10 +2,12 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { Pencil, Plus, RefreshCcw, Trash2, X } from "lucide-react";
+import { isVcpBridgeUrl } from "@/components/nova/nova-memory";
+import { Pencil, Plus, RefreshCcw, Sparkles, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import ModelEditDialog from "./model-edit-dialog";
 import ModelFilter, { type ModelFilterOptions } from "./model-filter";
+import { bridgeBaseModels, missingBridgePresets } from "./vcp-bridge-models";
 
 interface ModelsManagementProps {
   provider: ModelProvider;
@@ -17,6 +19,8 @@ interface ModelsManagementProps {
   onRemoveModel: (index: number) => void;
   onAddModel: (model: Omit<Model, "active" | "description" | "capabilities" | "manual">) => void;
   onClearAllModels: () => void;
+  /** 一次添加多个模型（避免多次 onAddModel 基于旧列表互相覆盖）。 */
+  onAddModels?: (models: Omit<Model, "active" | "description" | "capabilities" | "manual">[]) => void;
 }
 
 export default function ModelsManagement({
@@ -29,6 +33,7 @@ export default function ModelsManagement({
   onRemoveModel,
   onAddModel,
   onClearAllModels,
+  onAddModels,
 }: ModelsManagementProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
@@ -105,6 +110,13 @@ export default function ModelsManagement({
     setShowClearConfirm(false);
   };
 
+  const isBridge = isVcpBridgeUrl(provider?.baseUrl);
+  const baseModels = useMemo(
+    () => (isBridge ? bridgeBaseModels((provider?.models ?? []).map((model) => model.id)) : undefined),
+    [isBridge, provider?.models],
+  );
+  const presetsToAdd = isBridge ? missingBridgePresets((provider?.models ?? []).map((model) => model.id)) : [];
+
   const shouldShowFilter = provider?.provider === "openrouter" || (provider?.models?.length ?? 0) > 10;
 
   return (
@@ -134,6 +146,24 @@ export default function ModelsManagement({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>清空全部</TooltipContent>
+            </Tooltip>
+          )}
+          {isBridge && onAddModels && presetsToAdd.length > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  className="size-7"
+                  variant="outline"
+                  aria-label="添加 VCP 推荐组合"
+                  onClick={() => onAddModels(presetsToAdd)}
+                >
+                  <Sparkles className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                一键添加 VCP 推荐组合：{presetsToAdd.map((preset) => preset.id).join("、")}
+              </TooltipContent>
             </Tooltip>
           )}
           <Tooltip>
@@ -186,6 +216,7 @@ export default function ModelsManagement({
         mode={dialogMode}
         initialData={editModelData}
         onSave={handleSaveModel}
+        bridgeBaseModels={baseModels}
         onCancel={closeDialog}
       />
 

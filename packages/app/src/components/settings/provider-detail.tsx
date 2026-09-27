@@ -133,6 +133,16 @@ export default function ProviderDetailSettings({ providerId, onBack }: ProviderD
     }
   };
 
+  const handleAddModels = (newModels: Omit<Model, "active" | "description" | "capabilities" | "manual">[]) => {
+    if (!provider || newModels.length === 0) return;
+    const existing = new Set(provider.models.map((model) => model.id));
+    const additions = newModels
+      .filter((model) => !existing.has(model.id))
+      .map((model) => ({ ...model, active: true, description: "", capabilities: [], manual: true }));
+    if (additions.length === 0) return;
+    updateProvider(providerId, { models: [...provider.models, ...additions] });
+  };
+
   const handleRemoveModel = (index: number) => {
     if (provider) {
       updateProvider(providerId, {
@@ -283,6 +293,7 @@ export default function ProviderDetailSettings({ providerId, onBack }: ProviderD
           onEditModel={handleEditModel}
           onRemoveModel={handleRemoveModel}
           onAddModel={handleAddModel}
+          onAddModels={handleAddModels}
           onClearAllModels={handleClearAllModels}
         />
       </div>
