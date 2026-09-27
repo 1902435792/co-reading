@@ -349,6 +349,13 @@ export class FoliateViewerManager {
   }
 
   // Public API methods
+  /** 页宽、页边距变了之后重新计算一次版面。 */
+  relayout(): void {
+    if (this.styleManager) {
+      this.styleManager.updateLayout(this.getContainerDimensions());
+    }
+  }
+
   updateViewSettings(settings: Partial<ViewSettings>): void {
     if (this.styleManager) {
       this.styleManager.updateSettings(settings);

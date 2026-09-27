@@ -4,11 +4,19 @@ import { askNova } from "@/components/nova/nova-bus";
 import { getNovaExtras, useNovaExtras } from "@/components/nova/nova-extras";
 import { NOTE_WORTH_EVENT, drawInkDot, getNoteWorth, inkStrength } from "@/components/nova/nova-ink";
 import { NOTE_THREAD_EVENT, hasNoteThread } from "@/components/nova/nova-threads";
+import { drawSoftHighlight, drawSoftUnderline } from "@/components/reading-page/annotation-draw";
+import {
+  ANNOTATION_PREFS_EVENT,
+  HIGHLIGHT_OPACITY,
+  UNDERLINE_WIDTH,
+  getAnnotationPrefs,
+  resolveAnnotationColor,
+} from "@/lib/reading-page";
+import { useThemeStore } from "@/store/theme-store";
 import { HIGHLIGHT_COLOR_HEX } from "@/services/constants";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useLayoutStore } from "@/store/layout-store";
 import type { BookNote } from "@/types/book";
-import { Overlayer } from "foliate-js/overlayer.js";
 import { NotebookPen } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
@@ -151,6 +159,17 @@ const Annotator: React.FC = () => {
     for (const note of notes) void view?.addAnnotation(note);
   }, [aiNoteStyle, view, store]);
 
+  // 划线样式 / 高亮浓淡 / 配色变了：全部标注重画
+  useEffect(() => {
+    const redraw = () => {
+      const notes =
+        store.getState().config?.booknotes?.filter((note) => note.type === "annotation" && !note.deletedAt) ?? [];
+      for (const note of notes) void view?.addAnnotation(note);
+    };
+    window.addEventListener(ANNOTATION_PREFS_EVENT, redraw);
+    return () => window.removeEventListener(ANNOTATION_PREFS_EVENT, redraw);
+  }, [view, store]);
+
   // Jev 给新边注打出价值分后，墨点样式下按新深浅重画这一条。
   useEffect(() => {
     const onWorth = (event: Event) => {
@@ -179,7 +198,8 @@ const Annotator: React.FC = () => {
     const detail = (event as CustomEvent).detail;
     const { draw, annotation, doc, range } = detail;
     const { style, color } = annotation as BookNote;
-    const hexColor = color ? HIGHLIGHT_COLOR_HEX[color] : color;
+    const prefs = getAnnotationPrefs();
+    const hexColor = resolveAnnotationColor(color, prefs, HIGHLIGHT_COLOR_HEX);
     if ((annotation as BookNote).author === "ai" && getNovaExtras().aiNoteStyle === "ink") {
       const node = range.startContainer;
       const el = node.nodeType === 1 ? node : node.parentElement;
@@ -194,26 +214,20 @@ const Annotator: React.FC = () => {
       return;
     }
     if (style === "highlight") {
-      draw(Overlayer.highlight, { color: hexColor });
+      draw(drawSoftHighlight, {
+        color: hexColor,
+        opacity: HIGHLIGHT_OPACITY[prefs.highlightStrength],
+        dark: useThemeStore.getState().isDarkMode,
+      });
     } else if (["underline", "squiggly"].includes(style as string)) {
-      const { defaultView } = doc;
       const node = range.startContainer;
       const el = node.nodeType === 1 ? node : node.parentElement;
-      const { writingMode, lineHeight, fontSize } =
-        defaultView.getComputedStyle(el);
-      const lineHeightValue =
-        Number.parseFloat(lineHeight) ||
-        globalViewSettings?.lineHeight! * globalViewSettings?.defaultFontSize!;
-      const fontSizeValue =
-        Number.parseFloat(fontSize) || globalViewSettings?.defaultFontSize;
-      const strokeWidth = 2;
-      const padding = globalViewSettings?.vertical
-        ? (lineHeightValue - fontSizeValue! - strokeWidth) / 2
-        : strokeWidth;
-      draw(Overlayer[style as keyof typeof Overlayer], {
-        writingMode,
+      const writingMode: string = el ? doc.defaultView.getComputedStyle(el).writingMode : "";
+      draw(drawSoftUnderline, {
         color: hexColor,
-        padding,
+        style: style === "squiggly" ? "wavy" : prefs.underlineStyle,
+        width: UNDERLINE_WIDTH[prefs.underlineWeight],
+        vertical: writingMode.startsWith("vertical"),
       });
     }
   };

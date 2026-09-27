@@ -1,6 +1,7 @@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CURATED_FONTS, DEFAULT_BOOK_FONT, READING_BG_COLORS } from "@/services/constants";
+import { ReadingPageControls } from "@/components/reading-page/reading-page-controls";
+import { CURATED_FONTS, DEFAULT_BOOK_FONT } from "@/services/constants";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useFontStore } from "@/store/font-store";
 import { useThemeStore } from "@/store/theme-store";
@@ -156,33 +157,6 @@ const SettingsDropdown = () => {
 
   const isCJK = isCJKEnv();
 
-  // 背景色处理
-  const currentBgId = useMemo(() => {
-    const stylesheet = globalViewSettings.userStylesheet || "";
-    const match = stylesheet.match(/\/\*deepreader-bg:(\S+)\*\//);
-    return match ? match[1] : "default";
-  }, [globalViewSettings.userStylesheet]);
-
-  const handleBgColorChange = useCallback(
-    (bgId: string) => {
-      const preset = READING_BG_COLORS.find((c) => c.id === bgId);
-      if (!preset) return;
-      updateGlobalViewSettings((settings) => {
-        // 去掉旧的背景色注入，保留用户其他自定义样式
-        const oldStylesheet = (settings.userStylesheet || "").replace(
-          /\/\*deepreader-bg:\S+\*\/[\s\S]*?\/\*\/deepreader-bg\*\//g,
-          "",
-        );
-        const inject =
-          preset.id === "default"
-            ? ""
-            : `/*deepreader-bg:${preset.id}*/ html,body{background-color:${preset.bg}!important;color:${preset.fg}!important;} /*/deepreader-bg*/`;
-        return { ...settings, userStylesheet: `${oldStylesheet}\n${inject}`.trim() };
-      });
-    },
-    [updateGlobalViewSettings],
-  );
-
   // 暂时注释掉分栏相关的函数和变量
   /*
   const handleSetColumnMode = useCallback(
@@ -207,7 +181,12 @@ const SettingsDropdown = () => {
           <span>设置</span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-80 p-3" align="end" side="bottom" sideOffset={4}>
+      <DropdownMenuContent
+        className="max-h-[min(80vh,46rem)] w-80 overflow-y-auto p-3"
+        align="end"
+        side="bottom"
+        sideOffset={4}
+      >
         <div className="space-y-4">
           <div>
             <div className="mb-3 font-medium text-sm">字体系列</div>
@@ -346,29 +325,7 @@ const SettingsDropdown = () => {
             </div>
           </div>
 
-          <div>
-            <div className="mb-3 font-medium text-sm">阅读背景色</div>
-            <div className="flex items-center gap-2">
-              {READING_BG_COLORS.map((preset) => (
-                <button
-                  key={preset.id}
-                  className={`relative flex size-7 items-center justify-center rounded-full border-2 transition-all ${
-                    currentBgId === preset.id
-                      ? "scale-110 border-primary shadow-md"
-                      : "border-transparent hover:border-muted-foreground/40"
-                  }`}
-                  style={{
-                    backgroundColor: preset.bg || "transparent",
-                    boxShadow: preset.id === "default" ? "inset 0 0 0 1px #ccc" : undefined,
-                  }}
-                  onClick={() => handleBgColorChange(preset.id)}
-                  title={preset.name}
-                >
-                  {currentBgId === preset.id && <MdCheck size={14} style={{ color: preset.fg || "currentColor" }} />}
-                </button>
-              ))}
-            </div>
-          </div>
+          <ReadingPageControls compact />
 
           <button
             type="button"

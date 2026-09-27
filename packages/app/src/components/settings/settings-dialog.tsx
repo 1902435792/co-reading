@@ -12,11 +12,13 @@ import {
   Globe,
   Info,
   Palette,
+  ScrollText,
   Server,
   Type,
   Volume2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ReadingPageControls } from "@/components/reading-page/reading-page-controls";
 import CoReadingSettings from "./co-reading-settings";
 import FontManager from "./font-manager";
 import GeneralSettings from "./general";
@@ -38,6 +40,7 @@ type SettingsKey =
   | "co-reading"
   | "web-memory"
   | "data-privacy"
+  | "reading-page"
   | "about"
   | "font-manager"
   | "llama"
@@ -87,6 +90,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       title: "通用",
       items: [
         { key: "appearance", label: "外观", icon: Palette },
+        { key: "reading-page", label: "阅读页面", icon: ScrollText },
         { key: "font-manager", label: "字体管理", icon: Type },
       ],
     },
@@ -120,7 +124,12 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const pageInfo: Partial<Record<SettingsKey, { title: string; description: string }>> = {
     appearance: {
       title: "外观",
-      description: "界面的浅色 / 深色主题。阅读时的字体、字号、排版和背景色，在阅读页顶栏的「设置」里调整。",
+      description: "界面的浅色 / 深色主题和主题色。阅读背景、排版、划线样式在「阅读页面」里。",
+    },
+    "reading-page": {
+      title: "阅读页面",
+      description:
+        "主题色、阅读背景（含宣纸、牛皮纸等纸质纹理）、行距段距页宽，以及划线和高亮的样式。阅读页顶栏「设置」里有常用的几项。",
     },
     "font-manager": { title: "字体管理", description: "导入和管理自定义字体，导入后可以在阅读设置里选用。" },
     "model-providers": {
@@ -164,6 +173,12 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       case "general":
       case "appearance":
         return <GeneralSettings sections={["appearance"]} />;
+      case "reading-page":
+        return (
+          <section className="rounded-lg bg-muted/80 p-4">
+            <ReadingPageControls />
+          </section>
+        );
       case "co-reading":
         return <CoReadingSettings />;
       case "web-memory":

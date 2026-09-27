@@ -91,6 +91,16 @@ export class StyleManager {
       }
     }
 
+    // 用户设定的页宽：滚动/单栏时作为上限，自动分栏时作为每栏宽度；双栏保持平分
+    const readingWidth = this.currentSettings.readingWidth ?? 0;
+    if (readingWidth > 0) {
+      if (this.currentSettings.scrolled || columnMode === "one") {
+        computedMaxInlineSize = Math.min(computedMaxInlineSize, readingWidth);
+      } else if (columnMode === "auto") {
+        computedMaxInlineSize = readingWidth;
+      }
+    }
+
     return {
       maxColumnCount: computedMaxColumnCount,
       maxInlineSize: computedMaxInlineSize,

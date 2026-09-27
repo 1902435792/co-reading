@@ -103,6 +103,25 @@ export const useFoliateViewer = (bookId: string, bookDoc: BookDoc, config: BookC
     }
   }, [themeCode, isDarkMode, settings.globalViewSettings, bookDoc.rendition?.layout]);
 
+  // 页宽 / 页边距：同步给版面管理器并重排一次
+  const readingWidth = settings.globalViewSettings.readingWidth ?? 0;
+  const gapPercent = settings.globalViewSettings.gapPercent;
+  const prevLayoutRef = useRef<string | null>(null);
+  useEffect(() => {
+    const manager = managerRef.current;
+    if (!manager || !isInitialized.current) return;
+    const key = `${readingWidth}:${gapPercent}`;
+    if (prevLayoutRef.current === null) {
+      prevLayoutRef.current = key;
+      manager.updateViewSettings({ readingWidth, gapPercent });
+      return;
+    }
+    if (prevLayoutRef.current === key) return;
+    prevLayoutRef.current = key;
+    manager.updateViewSettings({ readingWidth, gapPercent });
+    manager.relayout();
+  }, [readingWidth, gapPercent]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional fine-grained deps
   const scrolled = settings.globalViewSettings.scrolled;
   const prevScrolledRef = useRef<boolean | undefined>(undefined);

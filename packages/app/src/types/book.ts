@@ -98,6 +98,8 @@ export interface BookLayout {
   continuousScroll: boolean;
   maxColumnCount: number;
   maxInlineSize: number;
+  /** 用户设定的版心宽度（px），0 或不设为自动 */
+  readingWidth?: number;
   maxBlockSize: number;
   animated: boolean;
   writingMode: WritingMode;
