@@ -26,6 +26,10 @@ import {
   normalizeJevSettings,
   noteWorthOf,
   pickNovaReaction,
+  COMMENT_REVIEW_MODE_QUESTIONS,
+  type CommentReviewMode,
+  buildCommentState,
+  pickCommentReviewMode,
 } from "./jev-rules";
 
 const SETTINGS_KEY = "deepreader:jev-settings";
@@ -305,4 +309,24 @@ export async function testJevConnection(settings: JevSettings): Promise<{
     gate: decidePageGate(answers, settings.skipLevel),
     reaction: pickNovaReaction(answers, 0),
   };
+}
+
+/**
+ * 读者评论后，Nova 该解释还是说感受。返回 null 表示没法判断（未配置 Jev 或请求失败），调用方按评论内容自行兜底。
+ */
+export async function chooseCommentReviewModeWithJev(
+  quote: string,
+  comment: string,
+): Promise<CommentReviewMode | null> {
+  const settings = getJevSettings();
+  if (!quote.trim() || !isJevConfigured(settings)) return null;
+  try {
+    const answers = await requestJevDecisions(buildCommentState(quote, comment), COMMENT_REVIEW_MODE_QUESTIONS, {
+      settings,
+      timeoutMs: 4_000,
+    });
+    return pickCommentReviewMode(answers);
+  } catch {
+    return null;
+  }
 }

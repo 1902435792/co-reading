@@ -297,3 +297,35 @@ export function emotionFromAnswers(answers: Record<string, JevAnswer>): { valenc
     intensity: Math.round(Math.max(0, Math.min(1, intensity)) * 1000) / 1000,
   };
 }
+
+// ---------- 读者评论：Nova 回评方式 ----------
+
+export type CommentReviewMode = "explain" | "feel";
+
+export const COMMENT_REVIEW_MODE_QUESTIONS: Record<string, JevQuestion> = {
+  review_mode: {
+    type: "choice",
+    instructions:
+      "读者在书上划了一段并写了评论。Nova 回评时，读者更需要哪一种？看读者评论的语气：有疑问、没看懂、想弄清概念/背景/论证时选 explain；在表达感受、共鸣、联想、态度时选 feel。",
+    criteria: {
+      explain: "解释：把这段讲清楚（概念、背景、论证、言外之意），回应读者的疑问",
+      feel: "感受：像朋友一样说说读到这里的感受与共鸣，接住读者的情绪和想法",
+    },
+  },
+};
+
+export function buildCommentState(quote: string, comment: string): string {
+  return `划线原文：${quote.trim().slice(0, 600)}\n\n读者的评论：${comment.trim().slice(0, 800) || "（没写评论）"}`;
+}
+
+/** 返回 null 表示 Jev 没给出可用的判断。 */
+export function pickCommentReviewMode(
+  answers: Record<string, JevAnswer>,
+  minConfidence = 0.4,
+): CommentReviewMode | null {
+  const answer = answers.review_mode;
+  const choice = answer?.choice;
+  if (choice !== "explain" && choice !== "feel") return null;
+  if (choiceConfidence(answer) < minConfidence) return null;
+  return choice;
+}

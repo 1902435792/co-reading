@@ -127,6 +127,8 @@ export interface CoReadingReviewInput {
   humanNote: string;
   rollingSummary: string;
   recentAiAnnotations: string[];
+  /** 回评方式：explain 解释，feel 感受；不填时由 Nova 自己把握。 */
+  reviewMode?: "explain" | "feel";
 }
 
 export interface CoReadingNoteCreateData {

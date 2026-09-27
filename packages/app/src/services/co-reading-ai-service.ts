@@ -129,6 +129,13 @@ export async function requestCoReadingReview(
     `RECENT_AI_ANNOTATIONS：\n${
       input.recentAiAnnotations.slice(0, 8).join("\n") || "（无）"
     }`,
+    `REVIEW_MODE：${
+      input.reviewMode === "explain"
+        ? "explain —— 重点把这段讲清楚：概念、背景、论证脉络或言外之意，正面回应读者评论里的疑问"
+        : input.reviewMode === "feel"
+          ? "feel —— 像一起读书的朋友那样说说读到这里的感受与共鸣，接住读者评论里的情绪和想法，可以有自己的态度"
+          : "auto —— 自行判断解释还是分享感受"
+    }`,
   ].join("\n\n");
 
   return requestCoReadingStructuredObject(
@@ -138,7 +145,7 @@ export async function requestCoReadingReview(
         schema: coReadingReviewResultSchema,
         mode: "json",
         system:
-          "你是正在与用户共读的 Nova。围绕用户主动划线的原文，结合上下文、用户想法和当前阅读脉络写一段有脉络、有判断、不过度总结且不剧透后文的书评。只返回严格 JSON：{review}。",
+          "你是正在与用户共读的 Nova。围绕用户主动划线的原文，结合上下文、用户想法和当前阅读脉络写一段有脉络、有判断、不过度总结且不剧透后文的书评；读者写了评论时要直接回应他，按 REVIEW_MODE 选择解释或分享感受，语气自然、不要说教。只返回严格 JSON：{review}。",
         prompt,
         maxOutputTokens: 900,
         temperature: 0.3,

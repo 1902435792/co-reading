@@ -17,7 +17,7 @@ import { HIGHLIGHT_COLOR_HEX } from "@/services/constants";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useLayoutStore } from "@/store/layout-store";
 import type { BookNote } from "@/types/book";
-import { NotebookPen } from "lucide-react";
+import { MessageSquareText } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { FiCopy, FiHelpCircle, FiMessageCircle } from "react-icons/fi";
@@ -29,6 +29,7 @@ import { useTextSelector } from "../../hooks/use-text-selector";
 import { useReaderStore, useReaderStoreApi } from "../reader-provider";
 import AnnotationPopup from "./annotation-popup";
 import AskAIPopup from "./ask-ai-popup";
+import { CommentComposer } from "@/components/reading-page/comment-composer";
 
 /** 墨点命中探测偏移：原位、往左（横排句末）、往上（竖排列末）。墨点半径 2.5–4.5px，离文字 2px。 */
 const INK_HIT_PROBES: ReadonlyArray<readonly [number, number]> = [
@@ -74,17 +75,17 @@ const Annotator: React.FC = () => {
     handleCopy,
     handleHighlight,
     addNote,
+    commentDraft,
+    submitComment,
+    cancelComment,
+    handleUndoKeyDown,
     handleExplain,
     handleAskAI,
     handleCloseAskAI,
     handleSendAIQuery,
   } = useAnnotator({ bookId });
 
-  const { handleScroll, handleMouseUp, handleShowPopup } = useTextSelector(
-    bookId,
-    setSelection,
-    handleDismissPopup
-  );
+  const { handleScroll, handleMouseUp, handleShowPopup } = useTextSelector(bookId, setSelection, handleDismissPopup);
 
   // 墨点边注：鼠标移到带墨点的句子上时，浮出 Nova 的边注。
   const [inkTip, setInkTip] = useState<{ id: string; text: string; x: number; y: number } | null>(null);
@@ -142,6 +143,7 @@ const Annotator: React.FC = () => {
         });
       });
       detail.doc.addEventListener("mouseleave", () => setInkTip(null));
+      detail.doc.addEventListener("keydown", handleUndoKeyDown);
     }
   };
 
@@ -155,7 +157,8 @@ const Annotator: React.FC = () => {
     const notes =
       store
         .getState()
-        .config?.booknotes?.filter((note) => note.type === "annotation" && note.author === "ai" && !note.deletedAt) ?? [];
+        .config?.booknotes?.filter((note) => note.type === "annotation" && note.author === "ai" && !note.deletedAt) ??
+      [];
     for (const note of notes) void view?.addAnnotation(note);
   }, [aiNoteStyle, view, store]);
 
@@ -239,11 +242,9 @@ const Annotator: React.FC = () => {
     const currentConfig = store.getState().config;
 
     const { booknotes = [] } = currentConfig!;
-    const annotations = booknotes.filter(
-      (booknote) => booknote.type === "annotation" && !booknote.deletedAt
-    );
+    const annotations = booknotes.filter((booknote) => booknote.type === "annotation" && !booknote.deletedAt);
     const annotation = annotations.find((annotation) =>
-      annotationId ? annotation.id === annotationId : annotation.cfi === cfi
+      annotationId ? annotation.id === annotationId : annotation.cfi === cfi,
     );
 
     if (!annotation) return;
@@ -261,6 +262,11 @@ const Annotator: React.FC = () => {
         useLayoutStore.setState({ isChatVisible: true });
       }
       return;
+    }
+
+    // 双链：点带评论的划线，批注栏同步定位到这条评论
+    if (annotation.note?.trim()) {
+      useLayoutStore.getState().openNotepadAnnotation(annotation.id);
     }
 
     const newSelection = {
@@ -281,8 +287,8 @@ const Annotator: React.FC = () => {
   // 同步 popup 显示状态到 text selector
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
-    handleShowPopup(showAnnotPopup || showAskAIPopup);
-  }, [showAnnotPopup, showAskAIPopup]);
+    handleShowPopup(showAnnotPopup || showAskAIPopup || Boolean(commentDraft));
+  }, [showAnnotPopup, showAskAIPopup, commentDraft]);
 
   const selectionAnnotated = selection?.annotated;
   // 问 Nova：Nova 在场时把选中的文字交给她（回答显示在 Nova 气泡里），否则退回到侧栏解释。
@@ -302,7 +308,7 @@ const Annotator: React.FC = () => {
       Icon: selectionAnnotated ? RiDeleteBinLine : PiHighlighterFill,
       onClick: handleHighlight,
     },
-    { label: "想法", Icon: NotebookPen, onClick: addNote },
+    { label: "评论", Icon: MessageSquareText, onClick: addNote },
   ];
 
   return (
@@ -323,24 +329,36 @@ const Annotator: React.FC = () => {
           <span className="line-clamp-[16] block whitespace-pre-line">{inkTip.text}</span>
         </div>
       )}
-      {showAnnotPopup &&
-        !showAskAIPopup &&
-        trianglePosition &&
-        annotPopupPosition && (
-          <AnnotationPopup
-            dir={globalViewSettings?.rtl ? "rtl" : "ltr"}
-            isVertical={globalViewSettings?.vertical ?? false}
-            buttons={buttons}
-            position={annotPopupPosition}
-            trianglePosition={trianglePosition}
-            highlightOptionsVisible={highlightOptionsVisible}
-            selectedStyle={selectedStyle}
-            selectedColor={selectedColor}
-            popupWidth={annotPopupWidth}
-            popupHeight={annotPopupHeight}
-            onHighlight={handleHighlight}
-          />
-        )}
+      {showAnnotPopup && !showAskAIPopup && trianglePosition && annotPopupPosition && (
+        <AnnotationPopup
+          dir={globalViewSettings?.rtl ? "rtl" : "ltr"}
+          isVertical={globalViewSettings?.vertical ?? false}
+          buttons={buttons}
+          position={annotPopupPosition}
+          trianglePosition={trianglePosition}
+          highlightOptionsVisible={highlightOptionsVisible}
+          selectedStyle={selectedStyle}
+          selectedColor={selectedColor}
+          popupWidth={annotPopupWidth}
+          popupHeight={annotPopupHeight}
+          onHighlight={handleHighlight}
+        />
+      )}
+      {commentDraft && (
+        <CommentComposer
+          key={commentDraft.cfi}
+          style={{
+            left: `${commentDraft.position.point.x}px`,
+            top: `${commentDraft.position.point.y + 15}px`,
+            width: `${commentDraft.width}px`,
+          }}
+          quote={commentDraft.text}
+          initialNote={commentDraft.note}
+          editing={commentDraft.editing}
+          onCancel={cancelComment}
+          onSubmit={submitComment}
+        />
+      )}
       {showAskAIPopup && askAIPopupPosition && selection && (
         <AskAIPopup
           style={{
