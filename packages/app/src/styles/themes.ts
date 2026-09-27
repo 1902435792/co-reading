@@ -273,3 +273,52 @@ export const THEME_LABELS_ZH: Record<string, string> = {
 
 /** 这些主题色会连同整个应用界面一起换色（其余只影响阅读页）。 */
 export const APP_WIDE_THEMES = ["eyecare", "paper", "bamboo", "sepia"] as const;
+
+/**
+ * 由主题色板推导整套界面变量（背景、卡片、侧栏、边框等），让没有手调 CSS 的主题也能整个界面换色。
+ * 手调过的主题（APP_WIDE_THEMES）在 app-themes.css 里有更细的配色，不走这里。
+ */
+export const deriveAppThemeVars = (palette: Palette, isDark: boolean): Record<string, string> => {
+  const bg = palette["base-100"];
+  const fg = palette["base-content"];
+  const primary = palette.primary;
+  const mix = (amount: number) => tinycolor.mix(bg, fg, amount).toHexString();
+  const alphaFg = (alpha: number) => {
+    const { r, g, b } = tinycolor(fg).toRgb();
+    return `rgb(${r} ${g} ${b} / ${alpha})`;
+  };
+  const primaryForeground = tinycolor
+    .mostReadable(primary, [bg, fg, "#ffffff", "#111111"], { includeFallbackColors: false })
+    .toHexString();
+  const card = isDark ? mix(4) : tinycolor.mix(bg, "#ffffff", 40).toHexString();
+  const accent = isDark ? mix(12) : mix(9);
+  const border = isDark ? alphaFg(0.1) : mix(13);
+  const ring = tinycolor.mix(primary, bg, 40).toHexString();
+  return {
+    "--background": bg,
+    "--foreground": fg,
+    "--card": card,
+    "--card-foreground": fg,
+    "--popover": isDark ? mix(6) : card,
+    "--popover-foreground": fg,
+    "--primary": primary,
+    "--primary-foreground": primaryForeground,
+    "--secondary": isDark ? mix(8) : mix(6),
+    "--secondary-foreground": fg,
+    "--muted": isDark ? mix(8) : mix(6),
+    "--muted-foreground": tinycolor.mix(fg, bg, isDark ? 35 : 45).toHexString(),
+    "--accent": accent,
+    "--accent-foreground": fg,
+    "--border": border,
+    "--input": isDark ? alphaFg(0.14) : mix(13),
+    "--ring": ring,
+    "--sidebar": isDark ? mix(3) : mix(3),
+    "--sidebar-foreground": fg,
+    "--sidebar-primary": primary,
+    "--sidebar-primary-foreground": primaryForeground,
+    "--sidebar-accent": accent,
+    "--sidebar-accent-foreground": fg,
+    "--sidebar-border": border,
+    "--sidebar-ring": ring,
+  };
+};

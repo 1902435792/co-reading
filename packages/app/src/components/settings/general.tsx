@@ -174,7 +174,7 @@ export default function GeneralSettings({ sections }: GeneralSettingsProps = {})
             <div>
               <span className="text dark:text-neutral-200">主题色</span>
               <p className="mt-2 mb-3 text-neutral-600 text-xs dark:text-neutral-400">
-                护眼 / 纸墨 / 青竹 / 复古（✦）会让整个界面一起换色；阅读页背景选「默认」时也跟着主题走
+                选中后整个界面一起换色；阅读页背景选「跟随主题」时，阅读页也跟着主题走
               </p>
               <ThemeColorPicker />
             </div>

@@ -1,4 +1,11 @@
-import type { CustomTheme, Palette, ThemeMode } from "@/styles/themes";
+import {
+  APP_WIDE_THEMES,
+  type CustomTheme,
+  type Palette,
+  type ThemeMode,
+  deriveAppThemeVars,
+  themes,
+} from "@/styles/themes";
 import type { SystemSettings } from "@/types/settings";
 import { type ThemeCode, getThemeCode } from "@/utils/style";
 import { create } from "zustand";
@@ -68,6 +75,19 @@ export const applyThemeClasses = (themeColor: string, isDarkMode: boolean) => {
     .join(" ");
   if (isDarkMode) root.classList.add("dark");
   if (themeColor && themeColor !== "default") root.classList.add(`theme-${themeColor}`);
+  applyDerivedThemeVars(root, themeColor, isDarkMode);
+};
+
+/** 没有手调 CSS 的主题：用色板推导界面变量，写在 <html> 的内联样式上；切回手调主题或默认时清掉。 */
+const DERIVED_VAR_KEYS = Object.keys(deriveAppThemeVars(themes[0]!.colors.light, false));
+const applyDerivedThemeVars = (root: HTMLElement, themeColor: string, isDarkMode: boolean) => {
+  for (const key of DERIVED_VAR_KEYS) root.style.removeProperty(key);
+  if (!themeColor || themeColor === "default") return;
+  if ((APP_WIDE_THEMES as readonly string[]).includes(themeColor)) return;
+  const theme = themes.find((item) => item.name === themeColor);
+  if (!theme) return;
+  const vars = deriveAppThemeVars(isDarkMode ? theme.colors.dark : theme.colors.light, isDarkMode);
+  for (const [key, value] of Object.entries(vars)) root.style.setProperty(key, value);
 };
 
 /** 切换主题时短暂开启全局颜色过渡（类名不能以 theme- 开头，否则会被 applyThemeClasses 清掉）。 */

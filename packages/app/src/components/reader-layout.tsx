@@ -16,7 +16,11 @@ import { HomeIcon } from "lucide-react";
 import { Resizable } from "re-resizable";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
-/** 侧栏开合动画：宽度（grid 0fr↔1fr）+ 淡入 + 轻微位移；关闭后不卸载，保留状态。 */
+/**
+ * 侧栏开合：宽度一步到位（阅读区只重排一次），内容用 transform/opacity 滑入淡出（走合成层，不卡）。
+ * 关闭时先淡出再收起宽度；关闭后不卸载，保留状态。
+ */
+const SIDEBAR_FADE_MS = 180;
 function SlidingSidebar({
   open,
   side,
@@ -29,21 +33,45 @@ function SlidingSidebar({
   onSettled: () => void;
 }) {
   const [mounted, setMounted] = useState(open);
+  const [expanded, setExpanded] = useState(open);
+  const [visible, setVisible] = useState(open);
+  const firstRef = useRef(true);
+  const settledRef = useRef(onSettled);
+  settledRef.current = onSettled;
   useEffect(() => {
-    if (open) setMounted(true);
+    if (firstRef.current) {
+      firstRef.current = false;
+      return;
+    }
+    let frame = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (open) {
+      setMounted(true);
+      setExpanded(true);
+      // 下一帧再显示，保证淡入过渡生效
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          setVisible(true);
+          settledRef.current();
+        });
+      });
+    } else {
+      setVisible(false);
+      timer = setTimeout(() => {
+        setExpanded(false);
+        requestAnimationFrame(() => settledRef.current());
+      }, SIDEBAR_FADE_MS);
+    }
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer) clearTimeout(timer);
+    };
   }, [open]);
   return (
-    <div
-      className="sidebar-slide grid h-full shrink-0"
-      style={{ gridTemplateColumns: open ? "1fr" : "0fr" }}
-      aria-hidden={!open}
-      onTransitionEnd={(event) => {
-        if (event.target === event.currentTarget && event.propertyName === "grid-template-columns") onSettled();
-      }}
-    >
+    <div className={`h-full shrink-0 ${expanded ? "" : "hidden"}`} aria-hidden={!open}>
       <div
-        className="sidebar-slide-inner min-w-0 overflow-hidden"
-        data-open={open}
+        className="sidebar-slide-inner h-full min-w-0"
+        data-open={visible}
         data-side={side}
         inert={!open || undefined}
       >
@@ -75,7 +103,7 @@ export default function ReaderLayout() {
 
   const isWindows = getOSPlatform() === "windows";
 
-  // 侧栏开合：动画期间盖一层淡遮罩，结束后只重排一次，避免阅读区抖动
+  // 侧栏开合：宽度一步到位后只重排一次，不盖遮罩（避免白闪）
   const sidebarStateRef = useRef<string | null>(null);
   const settleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const settleSidebars = () => {
@@ -96,9 +124,9 @@ export default function ReaderLayout() {
     }
     if (sidebarStateRef.current === key) return;
     sidebarStateRef.current = key;
-    setShowOverlay(true);
+    // 兜底：万一 onSettled 没触发，也保证重排一次
     if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-    settleTimerRef.current = setTimeout(settleSidebars, 520);
+    settleTimerRef.current = setTimeout(settleSidebars, 400);
   }, [isChatVisible, isNotepadVisible]);
 
   useEffect(() => {
@@ -225,7 +253,13 @@ export default function ReaderLayout() {
                   );
                 }}
               >
-                <div className={swapSidebars ? "ml-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm" : "mr-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"}>
+                <div
+                  className={
+                    swapSidebars
+                      ? "ml-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"
+                      : "mr-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"
+                  }
+                >
                   <NotepadContainer bookId={tab.bookId} />
                 </div>
               </Resizable>
@@ -273,7 +307,9 @@ export default function ReaderLayout() {
               >
                 <div
                   className={
-                    swapSidebars ? "mr-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm" : "ml-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"
+                    swapSidebars
+                      ? "mr-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"
+                      : "ml-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"
                   }
                 >
                   <SideChat key={`chat-${tab.id}`} bookId={tab.bookId} />
