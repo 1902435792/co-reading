@@ -3,6 +3,10 @@ import {
   normalizeReadingCfi,
 } from "./annotation-order";
 import type { CoReadingDiarySourceRecord } from "../types/co-reading.ts";
+import {
+  type NoteThreadMessage,
+  appendThreadToComment,
+} from "../components/nova/nova-threads.ts";
 
 export const CO_READING_DIARY_DEFAULT_COUNT = 30;
 export const CO_READING_DIARY_COUNT_PRESETS = [10, 20, 30, 50] as const;
@@ -208,7 +212,8 @@ export function buildCoReadingDiaryPayload(
   bookTitle: string,
   records: CoReadingDiarySourceRecord[],
   requestedCount: number,
-  now = new Date()
+  now = new Date(),
+  threadFor?: (annotationId: string) => NoteThreadMessage[] | undefined
 ): CoReadingDiaryPayload {
   const title = bookTitle.trim();
   if (!title) throw new Error("缺少书名，无法创建 Agent 日记");
@@ -221,6 +226,9 @@ export function buildCoReadingDiaryPayload(
     const text = item.text.trim();
     const comment = item.comment?.trim();
     if (!comment) throw new Error("共读记录缺少 Agent 评论");
+    const aiComment = item.sourceAnnotationId && threadFor
+      ? appendThreadToComment(comment, threadFor(item.sourceAnnotationId))
+      : comment;
     const sectionLabel = item.sectionLabel.trim() || null;
     const cfi = item.cfi.trim() || null;
 
@@ -229,7 +237,7 @@ export function buildCoReadingDiaryPayload(
       sourceAnnotationId: item.sourceAnnotationId,
       originalText: text,
       text,
-      aiComment: comment,
+      aiComment,
       comment,
       summary: item.summary?.trim() || null,
       section: sectionLabel,

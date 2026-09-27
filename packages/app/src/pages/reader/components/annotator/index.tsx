@@ -3,6 +3,7 @@ import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
 import { askNova } from "@/components/nova/nova-bus";
 import { getNovaExtras, useNovaExtras } from "@/components/nova/nova-extras";
 import { NOTE_WORTH_EVENT, drawInkDot, getNoteWorth, inkStrength } from "@/components/nova/nova-ink";
+import { NOTE_THREAD_EVENT, hasNoteThread } from "@/components/nova/nova-threads";
 import { HIGHLIGHT_COLOR_HEX } from "@/services/constants";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useLayoutStore } from "@/store/layout-store";
@@ -160,9 +161,19 @@ const Annotator: React.FC = () => {
         .config?.booknotes?.find((item) => item.id === id && item.author === "ai" && !item.deletedAt);
       if (note) void view?.addAnnotation(note);
     };
+    // 评论区有了新对话：墨点外面加上细环
+    const onThread = (event: Event) => {
+      const detail = (event as CustomEvent<{ bookId?: string; annotationId?: string }>).detail;
+      if (detail?.bookId !== bookId) return;
+      onWorth(new CustomEvent(NOTE_WORTH_EVENT, { detail: { id: detail.annotationId } }));
+    };
     window.addEventListener(NOTE_WORTH_EVENT, onWorth);
-    return () => window.removeEventListener(NOTE_WORTH_EVENT, onWorth);
-  }, [view, store]);
+    window.addEventListener(NOTE_THREAD_EVENT, onThread);
+    return () => {
+      window.removeEventListener(NOTE_WORTH_EVENT, onWorth);
+      window.removeEventListener(NOTE_THREAD_EVENT, onThread);
+    };
+  }, [view, store, bookId]);
 
   const onDrawAnnotation = (event: Event) => {
     const detail = (event as CustomEvent).detail;
@@ -178,6 +189,7 @@ const Annotator: React.FC = () => {
         strength: inkStrength((annotation as BookNote).note, getNoteWorth((annotation as BookNote).id)),
         vertical: writingMode.startsWith("vertical"),
         bounds: { width: doc.documentElement.scrollWidth, height: doc.documentElement.scrollHeight },
+        threaded: hasNoteThread(bookId, (annotation as BookNote).id),
       });
       return;
     }

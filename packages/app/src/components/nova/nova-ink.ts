@@ -119,6 +119,8 @@ export function drawInkDot(
     strength?: number;
     vertical?: boolean;
     bounds?: { width: number; height: number };
+    /** 这条边注下有评论区对话时，外面加一圈细环 */
+    threaded?: boolean;
   } = {},
 ): SVGElement {
   const group = document.createElementNS(SVG_NS, "g");
@@ -138,5 +140,16 @@ export function drawInkDot(
   dot.setAttribute("fill", color);
   dot.setAttribute("opacity", String(options.strength ?? 0.7));
   group.append(halo, dot);
+  if (options.threaded) {
+    const ring = document.createElementNS(SVG_NS, "circle");
+    ring.setAttribute("cx", String(geometry.cx));
+    ring.setAttribute("cy", String(geometry.cy));
+    ring.setAttribute("r", String(geometry.r * 2.4));
+    ring.setAttribute("fill", "none");
+    ring.setAttribute("stroke", color);
+    ring.setAttribute("stroke-width", "1");
+    ring.setAttribute("opacity", "0.55");
+    group.append(ring);
+  }
   return group;
 }

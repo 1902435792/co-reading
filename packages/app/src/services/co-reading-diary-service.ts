@@ -20,10 +20,11 @@ export interface CoReadingDiaryWriteResult {
   writtenCount: number;
 }
 
-export async function createCoReadingDiary(
-  bookId: string,
-  payload: CoReadingDiaryPayload,
-): Promise<CoReadingDiaryWriteResult> {
+/**
+ * 把整理好的日记条目发给 VCP Bridge 的日记接口（共读日记和问答日记共用）。
+ * 只负责发送和解析确认，不动本地账本。
+ */
+export async function postVcpDiaryPayload(payload: CoReadingDiaryPayload) {
   const state = useProviderStore.getState();
   const selected = state.selectedModel;
   if (!selected) throw new Error("请先在问答 Agent 中选择可用模型");
@@ -56,10 +57,16 @@ export async function createCoReadingDiary(
         `VCP 共读 Agent 写入失败（HTTP ${response.status}）`,
     );
   }
+  return parseConfirmedVcpCoReadingDiaryResponse(body);
+}
 
+export async function createCoReadingDiary(
+  bookId: string,
+  payload: CoReadingDiaryPayload,
+): Promise<CoReadingDiaryWriteResult> {
   // Parsing must succeed before touching the local ledger. In particular, a
   // malformed 2xx response must not be upgraded into success by a local ID.
-  const confirmed = parseConfirmedVcpCoReadingDiaryResponse(body);
+  const confirmed = await postVcpDiaryPayload(payload);
   try {
     const ledger = await markCoReadingDiaryWritten({
       bookId,

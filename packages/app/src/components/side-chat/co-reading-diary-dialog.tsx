@@ -16,6 +16,7 @@ import {
   buildCoReadingDiaryPayload,
   getCoReadingDiarySelectionState,
 } from "@/lib/co-reading-diary";
+import { getNoteThread } from "@/components/nova/nova-threads";
 import { createCoReadingDiary } from "@/services/co-reading-diary-service";
 import { getCoReadingDiarySources } from "@/services/co-reading-service";
 import type { CoReadingDiarySourceRecord } from "@/types/co-reading";
@@ -103,7 +104,9 @@ export function CoReadingDiaryDialog({
       const payload = buildCoReadingDiaryPayload(
         bookTitle,
         sources,
-        requestedCount
+        requestedCount,
+        new Date(),
+        (annotationId) => getNoteThread(bookId, annotationId)
       );
       const result = await createCoReadingDiary(bookId, payload);
       const successMessage =

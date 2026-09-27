@@ -1,3 +1,4 @@
+import { NovaNoteThread } from "@/components/nova/nova-note-thread";
 import { Button } from "@/components/ui/button";
 import {
   getCoReadingCodePointOffset,
@@ -764,6 +765,19 @@ export function CoReadingRangeMap({
               )}
             </button>
           )}
+          {!selected && selectedAnnotation?.note && (
+            <div className="rounded-md bg-muted/30 px-2 pb-2 text-xs">
+              <NovaNoteThread
+                bookId={bookId}
+                annotationId={selectedAnnotation.id}
+                quote={selectedAnnotation.text ?? ""}
+                comment={selectedAnnotation.note}
+                bookTitle={bookData?.book?.title}
+                sectionLabel={progress?.sectionLabel}
+                settings={coReadingSnapshot?.settings}
+              />
+            </div>
+          )}
           {selected && (
             <div className="rounded-md bg-muted/50 p-2 text-xs">
               <div className="mb-1 flex items-center justify-between">
@@ -792,6 +806,17 @@ export function CoReadingRangeMap({
                 原文
                 <ChevronRight className="size-3" />
               </Button>
+              {selected.annotationId && selected.comment && (
+                <NovaNoteThread
+                  bookId={bookId}
+                  annotationId={selected.annotationId}
+                  quote={selected.text}
+                  comment={selected.comment}
+                  bookTitle={bookData?.book?.title}
+                  sectionLabel={selected.sectionLabel}
+                  settings={coReadingSnapshot?.settings}
+                />
+              )}
             </div>
           )}
         </div>

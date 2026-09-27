@@ -6,7 +6,7 @@ import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
 import { openSettings } from "@/components/settings/open-settings";
 import { useThemeStore } from "@/store/theme-store";
 import type { ReadingFootprintTarget } from "@/types/co-reading";
-import { BookOpenText, History, MessageCirclePlus, MessagesSquare, Settings } from "lucide-react";
+import { BookOpenText, History, MessageCirclePlus, MessagesSquare, NotebookPen, Settings } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ChatContainerRoot } from "../prompt-kit/chat-container";
 import { ScrollButton } from "../prompt-kit/scroll-button";
@@ -16,6 +16,7 @@ import { ChatMessages } from "./chat-messages";
 import { ChatThreads } from "./chat-threads";
 import { CoReadingPanelV2 } from "./co-reading-panel-v2";
 import ModelSelector from "./model-selector";
+import { QaDiaryDialog } from "./qa-diary-dialog";
 
 interface ChatContentProps {
   bookId?: string;
@@ -26,6 +27,8 @@ function ChatContent({ bookId }: ChatContentProps) {
   const { autoScroll } = useThemeStore();
   const [toolDetail, setToolDetail] = useState<any>(null);
   const [showMindmapDialog, setShowMindmapDialog] = useState(false);
+  const [showQaDiary, setShowQaDiary] = useState(false);
+  const bookTitle = useReaderStore((state) => state.bookData?.book?.title) ?? "未命名书籍";
   const setActiveContext = useReaderStore((state) => state.setActiveContext)!;
   const progress = useReaderStore((state) => state.progress);
   const activeContext = useReaderStore((state) => state.activeContext)!;
@@ -194,6 +197,19 @@ function ChatContent({ bookId }: ChatContentProps) {
             >
               <History className="h-5 w-5" />
             </Button>
+            {bookId && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="z-40 size-7 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                title="写问答日记（记进 VCP）"
+                aria-label="写问答日记"
+                disabled={messages.length === 0}
+                onClick={() => setShowQaDiary(true)}
+              >
+                <NotebookPen className="h-5 w-5" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -252,6 +268,16 @@ function ChatContent({ bookId }: ChatContentProps) {
         />
       )}
 
+      {bookId && (
+        <QaDiaryDialog
+          open={showQaDiary}
+          onOpenChange={setShowQaDiary}
+          bookId={bookId}
+          bookTitle={bookTitle}
+          sectionLabel={progress?.sectionLabel}
+          messages={messages}
+        />
+      )}
       <MindmapDialog open={showMindmapDialog} onOpenChange={setShowMindmapDialog} toolPart={toolDetail} />
     </main>
   );
