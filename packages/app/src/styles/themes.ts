@@ -79,6 +79,30 @@ export const themes = [
     },
   },
   {
+    name: "eyecare",
+    label: _("Eye Care"),
+    colors: {
+      light: generateLightPalette({ fg: "#3b342b", bg: "#f4efe3", primary: "#4f7a6a" }),
+      dark: generateDarkPalette({ fg: "#dcd3c1", bg: "#23211e", primary: "#9cc3b0" }),
+    },
+  },
+  {
+    name: "paper",
+    label: _("Paper"),
+    colors: {
+      light: generateLightPalette({ fg: "#1f1d1a", bg: "#f7f3ea", primary: "#8a5a2b" }),
+      dark: generateDarkPalette({ fg: "#e3dacb", bg: "#1e1c19", primary: "#d0a370" }),
+    },
+  },
+  {
+    name: "bamboo",
+    label: _("Bamboo"),
+    colors: {
+      light: generateLightPalette({ fg: "#2f3a2c", bg: "#eaf2e6", primary: "#3f7d4e" }),
+      dark: generateDarkPalette({ fg: "#d5e0d2", bg: "#1d2320", primary: "#8cc79b" }),
+    },
+  },
+  {
     name: "gray",
     label: _("Gray"),
     colors: {
@@ -228,3 +252,24 @@ export const applyCustomTheme = (customTheme: CustomTheme) => {
     dark: darkThemeName,
   };
 };
+
+/** 主题色的中文名（设置页展示用）。 */
+export const THEME_LABELS_ZH: Record<string, string> = {
+  default: "默认",
+  eyecare: "护眼",
+  paper: "纸墨",
+  bamboo: "青竹",
+  gray: "灰调",
+  sepia: "复古",
+  grass: "草地",
+  cherry: "樱桃",
+  sky: "晴空",
+  solarized: "Solarized",
+  gruvbox: "Gruvbox",
+  nord: "Nord",
+  contrast: "高对比",
+  sunset: "日落",
+};
+
+/** 这些主题色会连同整个应用界面一起换色（其余只影响阅读页）。 */
+export const APP_WIDE_THEMES = ["eyecare", "paper", "bamboo", "sepia"] as const;

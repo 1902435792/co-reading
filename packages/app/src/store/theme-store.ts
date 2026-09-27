@@ -13,6 +13,9 @@ interface ThemeState {
   systemUIAlwaysHidden: boolean;
   autoScroll: boolean;
   swapSidebars: boolean;
+  /** 主题色（themes.ts 里的 name），护眼 / 纸墨 / 青竹等 */
+  themeColor: string;
+  setThemeColor: (name: string) => void;
   setSystemUIAlwaysHidden: (hidden: boolean) => void;
   setStatusBarHeight: (height: number) => void;
   showSystemUI: () => void;
@@ -48,6 +51,25 @@ const getInitialSwapSidebars = (): boolean => {
   return false;
 };
 
+const getInitialThemeColor = (): string => {
+  if (typeof window !== "undefined" && localStorage) {
+    return localStorage.getItem("themeColor") || "default";
+  }
+  return "default";
+};
+
+/** 把 dark 和 theme-<name> 类同步到 html 上（shadcn 变量据此换色）。 */
+export const applyThemeClasses = (themeColor: string, isDarkMode: boolean) => {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  root.className = root.className
+    .split(" ")
+    .filter((cls) => cls && cls !== "dark" && !cls.startsWith("theme-"))
+    .join(" ");
+  if (isDarkMode) root.classList.add("dark");
+  if (themeColor && themeColor !== "default") root.classList.add(`theme-${themeColor}`);
+};
+
 export const useThemeStore = create<ThemeState>((set, get) => {
   const initialThemeMode = getInitialThemeMode();
   const initialAutoScroll = getInitialAutoScroll();
@@ -61,21 +83,17 @@ export const useThemeStore = create<ThemeState>((set, get) => {
   const isDarkMode = initialThemeMode === "dark" || (initialThemeMode === "auto" && systemIsDarkMode);
   const themeCode = getThemeCode();
 
-  if (typeof window !== "undefined") {
-    document.documentElement.className = document.documentElement.className
-      .split(" ")
-      .filter((cls) => cls !== "dark")
-      .join(" ");
+  const initialThemeColor = getInitialThemeColor();
 
-    if (isDarkMode) {
-      document.documentElement.classList.add("dark");
-    }
+  if (typeof window !== "undefined") {
+    applyThemeClasses(initialThemeColor, isDarkMode);
 
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handleSystemThemeChange = () => {
       const mode = get().themeMode;
       const isDarkMode = mode === "dark" || (mode === "auto" && mediaQuery.matches);
-      set({ systemIsDarkMode: mediaQuery.matches, isDarkMode });
+      applyThemeClasses(get().themeColor, isDarkMode);
+      set({ systemIsDarkMode: mediaQuery.matches, isDarkMode, themeCode: getThemeCode() });
     };
 
     mediaQuery.addEventListener("change", handleSystemThemeChange);
@@ -91,6 +109,14 @@ export const useThemeStore = create<ThemeState>((set, get) => {
     systemUIAlwaysHidden: false,
     autoScroll: initialAutoScroll,
     swapSidebars: initialSwapSidebars,
+    themeColor: initialThemeColor,
+    setThemeColor: (name) => {
+      if (typeof window !== "undefined" && localStorage) {
+        localStorage.setItem("themeColor", name);
+      }
+      applyThemeClasses(name, get().isDarkMode);
+      set({ themeColor: name, themeCode: getThemeCode() });
+    },
     showSystemUI: () => set({ systemUIVisible: true }),
     dismissSystemUI: () => set({ systemUIVisible: false }),
     setStatusBarHeight: (height: number) => set({ statusBarHeight: height }),
@@ -102,15 +128,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
       }
       const isDarkMode = mode === "dark" || (mode === "auto" && get().systemIsDarkMode);
 
-      // Apply theme classes to document element
-      document.documentElement.className = document.documentElement.className
-        .split(" ")
-        .filter((cls) => cls !== "dark")
-        .join(" ");
-
-      if (isDarkMode) {
-        document.documentElement.classList.add("dark");
-      }
+      applyThemeClasses(get().themeColor, isDarkMode);
 
       set({ themeMode: mode, isDarkMode });
       set({ themeCode: getThemeCode() });

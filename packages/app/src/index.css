@@ -5,6 +5,7 @@
 
 /* Import theme file */
 @import "./themes/default.css";
+@import "./themes/app-themes.css";
 
 ::-webkit-scrollbar {
   width: 6px;
