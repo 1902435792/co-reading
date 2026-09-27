@@ -127,7 +127,7 @@ export function NovaNoteThread({
           {messages.map((item, index) => (
             <div
               key={`${item.at}-${index}`}
-              className={`rounded-md px-2 py-1 leading-relaxed ${
+              className={`dr-rise-in rounded-md px-2 py-1 leading-relaxed ${
                 item.role === "reader" ? "ml-6 bg-primary/10 text-foreground" : "mr-6 bg-background text-foreground"
               }`}
             >

@@ -70,6 +70,16 @@ export const applyThemeClasses = (themeColor: string, isDarkMode: boolean) => {
   if (themeColor && themeColor !== "default") root.classList.add(`theme-${themeColor}`);
 };
 
+/** 切换主题时短暂开启全局颜色过渡（类名不能以 theme- 开头，否则会被 applyThemeClasses 清掉）。 */
+let themeSwitchTimer: ReturnType<typeof setTimeout> | null = null;
+const flashThemeTransition = () => {
+  if (typeof document === "undefined") return;
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  document.documentElement.classList.add("dr-theme-switching");
+  if (themeSwitchTimer) clearTimeout(themeSwitchTimer);
+  themeSwitchTimer = setTimeout(() => document.documentElement.classList.remove("dr-theme-switching"), 450);
+};
+
 export const useThemeStore = create<ThemeState>((set, get) => {
   const initialThemeMode = getInitialThemeMode();
   const initialAutoScroll = getInitialAutoScroll();
@@ -114,6 +124,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
       if (typeof window !== "undefined" && localStorage) {
         localStorage.setItem("themeColor", name);
       }
+      flashThemeTransition();
       applyThemeClasses(name, get().isDarkMode);
       set({ themeColor: name, themeCode: getThemeCode() });
     },
@@ -128,6 +139,7 @@ export const useThemeStore = create<ThemeState>((set, get) => {
       }
       const isDarkMode = mode === "dark" || (mode === "auto" && get().systemIsDarkMode);
 
+      flashThemeTransition();
       applyThemeClasses(get().themeColor, isDarkMode);
 
       set({ themeMode: mode, isDarkMode });

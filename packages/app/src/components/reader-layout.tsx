@@ -14,7 +14,44 @@ import { getOSPlatform } from "@/utils/misc";
 import { Tabs } from "app-tabs";
 import { HomeIcon } from "lucide-react";
 import { Resizable } from "re-resizable";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+
+/** 侧栏开合动画：宽度（grid 0fr↔1fr）+ 淡入 + 轻微位移；关闭后不卸载，保留状态。 */
+function SlidingSidebar({
+  open,
+  side,
+  children,
+  onSettled,
+}: {
+  open: boolean;
+  side: "left" | "right";
+  children: ReactNode;
+  onSettled: () => void;
+}) {
+  const [mounted, setMounted] = useState(open);
+  useEffect(() => {
+    if (open) setMounted(true);
+  }, [open]);
+  return (
+    <div
+      className="sidebar-slide grid h-full shrink-0"
+      style={{ gridTemplateColumns: open ? "1fr" : "0fr" }}
+      aria-hidden={!open}
+      onTransitionEnd={(event) => {
+        if (event.target === event.currentTarget && event.propertyName === "grid-template-columns") onSettled();
+      }}
+    >
+      <div
+        className="sidebar-slide-inner min-w-0 overflow-hidden"
+        data-open={open}
+        data-side={side}
+        inert={!open || undefined}
+      >
+        {mounted && children}
+      </div>
+    </div>
+  );
+}
 
 export default function ReaderLayout() {
   useFontEvents();
@@ -37,6 +74,32 @@ export default function ReaderLayout() {
   const [showOverlay, setShowOverlay] = useState(false);
 
   const isWindows = getOSPlatform() === "windows";
+
+  // 侧栏开合：动画期间盖一层淡遮罩，结束后只重排一次，避免阅读区抖动
+  const sidebarStateRef = useRef<string | null>(null);
+  const settleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const settleSidebars = () => {
+    if (settleTimerRef.current) {
+      clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
+    }
+    setShowOverlay(false);
+    const bookIds = tabs.map((tab) => tab.bookId).filter(Boolean);
+    window.dispatchEvent(new CustomEvent("foliate-resize-update", { detail: { bookIds, source: "sidebar-toggle" } }));
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 只在侧栏开关变化时触发
+  useEffect(() => {
+    const key = `${isChatVisible}:${isNotepadVisible}`;
+    if (sidebarStateRef.current === null) {
+      sidebarStateRef.current = key;
+      return;
+    }
+    if (sidebarStateRef.current === key) return;
+    sidebarStateRef.current = key;
+    setShowOverlay(true);
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(settleSidebars, 520);
+  }, [isChatVisible, isNotepadVisible]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -123,96 +186,100 @@ export default function ReaderLayout() {
           const store = getReaderStore(tab.id);
           if (!store) return null;
 
-          const notepadSidebar = isNotepadVisible && (
-            <Resizable
-              defaultSize={{
-                width: 300,
-                height: "100%",
-              }}
-              minWidth={260}
-              maxWidth={500}
-              enable={{
-                top: false,
-                right: !swapSidebars,
-                bottom: false,
-                left: swapSidebars,
-                topRight: false,
-                bottomRight: false,
-                bottomLeft: false,
-                topLeft: false,
-              }}
-              handleComponent={
-                swapSidebars
-                  ? { left: <div className="custom-resize-handle" /> }
-                  : { right: <div className="custom-resize-handle custom-resize-handle-left" /> }
-              }
-              className="h-full"
-              onResize={() => {
-                if (!showOverlay) {
-                  setShowOverlay(true);
+          const notepadSidebar = (
+            <SlidingSidebar open={isNotepadVisible} side={swapSidebars ? "right" : "left"} onSettled={settleSidebars}>
+              <Resizable
+                defaultSize={{
+                  width: 300,
+                  height: "100%",
+                }}
+                minWidth={260}
+                maxWidth={500}
+                enable={{
+                  top: false,
+                  right: !swapSidebars,
+                  bottom: false,
+                  left: swapSidebars,
+                  topRight: false,
+                  bottomRight: false,
+                  bottomLeft: false,
+                  topLeft: false,
+                }}
+                handleComponent={
+                  swapSidebars
+                    ? { left: <div className="custom-resize-handle" /> }
+                    : { right: <div className="custom-resize-handle custom-resize-handle-left" /> }
                 }
-              }}
-              onResizeStop={() => {
-                setShowOverlay(false);
-                window.dispatchEvent(
-                  new CustomEvent("foliate-resize-update", {
-                    detail: { bookId: tab.bookId, source: "resize-drag" },
-                  }),
-                );
-              }}
-            >
-              <div className={swapSidebars ? "ml-1 h-[calc(100dvh-48px)]" : "mr-1 h-[calc(100dvh-48px)]"}>
-                <NotepadContainer bookId={tab.bookId} />
-              </div>
-            </Resizable>
+                className="h-full"
+                onResize={() => {
+                  if (!showOverlay) {
+                    setShowOverlay(true);
+                  }
+                }}
+                onResizeStop={() => {
+                  setShowOverlay(false);
+                  window.dispatchEvent(
+                    new CustomEvent("foliate-resize-update", {
+                      detail: { bookId: tab.bookId, bookIds: [tab.bookId], source: "resize-drag" },
+                    }),
+                  );
+                }}
+              >
+                <div className={swapSidebars ? "ml-1 h-[calc(100dvh-48px)]" : "mr-1 h-[calc(100dvh-48px)]"}>
+                  <NotepadContainer bookId={tab.bookId} />
+                </div>
+              </Resizable>
+            </SlidingSidebar>
           );
 
-          const chatSidebar = isChatVisible && (
-            <Resizable
-              defaultSize={{
-                width: 370,
-                height: "100%",
-              }}
-              minWidth={320}
-              maxWidth={580}
-              enable={{
-                top: false,
-                right: swapSidebars,
-                bottom: false,
-                left: !swapSidebars,
-                topRight: false,
-                bottomRight: false,
-                bottomLeft: false,
-                topLeft: false,
-              }}
-              handleComponent={
-                swapSidebars
-                  ? { right: <div className="custom-resize-handle custom-resize-handle-left" /> }
-                  : { left: <div className="custom-resize-handle" /> }
-              }
-              className="h-full"
-              onResize={() => {
-                if (!showOverlay) {
-                  setShowOverlay(true);
+          const chatSidebar = (
+            <SlidingSidebar open={isChatVisible} side={swapSidebars ? "left" : "right"} onSettled={settleSidebars}>
+              <Resizable
+                defaultSize={{
+                  width: 370,
+                  height: "100%",
+                }}
+                minWidth={320}
+                maxWidth={580}
+                enable={{
+                  top: false,
+                  right: swapSidebars,
+                  bottom: false,
+                  left: !swapSidebars,
+                  topRight: false,
+                  bottomRight: false,
+                  bottomLeft: false,
+                  topLeft: false,
+                }}
+                handleComponent={
+                  swapSidebars
+                    ? { right: <div className="custom-resize-handle custom-resize-handle-left" /> }
+                    : { left: <div className="custom-resize-handle" /> }
                 }
-              }}
-              onResizeStop={() => {
-                setShowOverlay(false);
-                window.dispatchEvent(
-                  new CustomEvent("foliate-resize-update", {
-                    detail: { bookId: tab.bookId, source: "resize-drag" },
-                  }),
-                );
-              }}
-            >
-              <div
-                className={
-                  swapSidebars ? "mr-1 h-[calc(100dvh-48px)] rounded-md" : "m-1 mt-0 h-[calc(100dvh-48px)] rounded-md"
-                }
+                className="h-full"
+                onResize={() => {
+                  if (!showOverlay) {
+                    setShowOverlay(true);
+                  }
+                }}
+                onResizeStop={() => {
+                  setShowOverlay(false);
+                  window.dispatchEvent(
+                    new CustomEvent("foliate-resize-update", {
+                      detail: { bookId: tab.bookId, bookIds: [tab.bookId], source: "resize-drag" },
+                    }),
+                  );
+                }}
               >
-                <SideChat key={`chat-${tab.id}`} bookId={tab.bookId} />
-              </div>
-            </Resizable>
+                <div
+                  className={
+                    swapSidebars ? "mr-1 h-[calc(100dvh-48px)] rounded-md" : "m-1 mt-0 h-[calc(100dvh-48px)] rounded-md"
+                  }
+                >
+                  <SideChat key={`chat-${tab.id}`} bookId={tab.bookId} />
+                </div>
+              </Resizable>
+            </SlidingSidebar>
           );
 
           return (
@@ -229,9 +296,12 @@ export default function ReaderLayout() {
                 <div className="relative flex-1 rounded-md border shadow-around">
                   <ReaderViewer />
 
-                  {showOverlay && (
-                    <div className="absolute inset-0 z-50 flex items-center justify-center rounded-md bg-background/80 backdrop-blur-sm dark:bg-neutral-900/60" />
-                  )}
+                  <div
+                    aria-hidden
+                    className={`pointer-events-none absolute inset-0 z-50 rounded-md bg-background/70 backdrop-blur-[2px] transition-opacity duration-200 dark:bg-neutral-900/50 ${
+                      showOverlay ? "opacity-100" : "opacity-0"
+                    }`}
+                  />
                 </div>
 
                 {swapSidebars ? notepadSidebar : chatSidebar}

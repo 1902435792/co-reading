@@ -779,7 +779,7 @@ export function CoReadingRangeMap({
             </div>
           )}
           {selected && (
-            <div className="rounded-md bg-muted/50 p-2 text-xs">
+            <div key={selected.id} className="dr-rise-in rounded-md bg-muted/50 p-2 text-xs">
               <div className="mb-1 flex items-center justify-between">
                 <strong>{selected.sectionLabel}</strong>
                 <span>{selected.status}</span>

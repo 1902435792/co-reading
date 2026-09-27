@@ -338,11 +338,13 @@ export default function SideChat({ bookId }: ChatContentProps) {
           </button>
         </div>
       </div>
-      <div className={mode === "chat" ? "min-h-0 flex-1" : "hidden"}>
+      <div className={mode === "chat" ? "dr-rise-in min-h-0 flex-1" : "hidden"}>
         <ChatContent bookId={bookId} />
       </div>
       {mode === "co-reading" && bookId && (
-        <CoReadingPanelV2 bookId={bookId} readingFootprintTarget={readingFootprintTarget} />
+        <div className="dr-rise-in flex min-h-0 flex-1 flex-col">
+          <CoReadingPanelV2 bookId={bookId} readingFootprintTarget={readingFootprintTarget} />
+        </div>
       )}
     </div>
   );
