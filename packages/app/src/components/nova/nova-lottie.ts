@@ -256,11 +256,11 @@ const RING: Record<NovaMood, Rgb> = {
 const DURATION: Record<NovaMood, number> = {
   idle: 120,
   greet: 75,
-  thinking: 60,
-  talking: 36,
+  thinking: 90,
+  talking: 60,
   found: 60,
   silent: 90,
-  error: 48,
+  error: 150,
   sleep: 150,
   paused: 120,
   pet: 45,
@@ -282,13 +282,8 @@ function avatarMotion(mood: NovaMood): Motion {
       return {
         p: anim([
           [0, at()],
-          [60, at(0, -5)],
+          [60, at(0, -3)],
           [120, at()],
-        ]),
-        s: anim([
-          [0, [100, 100, 100]],
-          [60, [101.5, 103, 100]],
-          [120, [100, 100, 100]],
         ]),
       };
     case "greet":
@@ -311,32 +306,20 @@ function avatarMotion(mood: NovaMood): Motion {
       };
     case "thinking":
       return {
-        r: anim([
-          [0, -4],
-          [30, 4],
-          [60, -4],
-        ]),
         p: anim([
           [0, at()],
-          [30, at(0, -3)],
-          [60, at()],
+          [45, at(0, -3)],
+          [90, at()],
         ]),
       };
     case "talking":
       return {
         p: anim([
           [0, at()],
-          [9, at(0, -10)],
-          [18, at()],
-          [27, at(0, -6)],
-          [36, at()],
-        ]),
-        s: anim([
-          [0, [100, 100, 100]],
-          [9, [97, 104, 100]],
-          [18, [104, 96, 100]],
-          [27, [99, 102, 100]],
-          [36, [100, 100, 100]],
+          [15, at(0, -4)],
+          [30, at()],
+          [45, at(0, -2)],
+          [60, at()],
         ]),
       };
     case "found":
@@ -358,14 +341,9 @@ function avatarMotion(mood: NovaMood): Motion {
       };
     case "silent":
       return {
-        r: anim([
-          [0, -3],
-          [45, 3],
-          [90, -3],
-        ]),
         p: anim([
           [0, at()],
-          [45, at(0, -3)],
+          [45, at(0, -2)],
           [90, at()],
         ]),
       };
@@ -373,40 +351,25 @@ function avatarMotion(mood: NovaMood): Motion {
       return {
         p: anim([
           [0, at()],
-          [4, at(-8)],
-          [8, at(8)],
-          [12, at(-6)],
-          [16, at(6)],
-          [20, at(-2)],
-          [24, at()],
-          [48, at()],
+          [4, at(-5)],
+          [8, at(5)],
+          [12, at(-3)],
+          [16, at(3)],
+          [20, at()],
+          [150, at()],
         ]),
       };
     case "sleep":
       return {
-        r: anim([
-          [0, -6],
-          [75, -10],
-          [150, -6],
-        ]),
+        r: fixed(-6),
         p: anim([
           [0, at()],
-          [75, at(0, 4)],
+          [75, at(0, 3)],
           [150, at()],
-        ]),
-        s: anim([
-          [0, [100, 100, 100]],
-          [75, [101, 102, 100]],
-          [150, [100, 100, 100]],
         ]),
       };
     case "paused":
       return {
-        r: anim([
-          [0, -2],
-          [60, 2],
-          [120, -2],
-        ]),
         o: fixed(88),
       };
     case "pet":
