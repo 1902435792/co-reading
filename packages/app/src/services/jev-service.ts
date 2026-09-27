@@ -9,6 +9,7 @@ import {
   type JevPageGate,
   type JevQuestion,
   type JevSettings,
+  NOTE_WORTH_QUESTIONS,
   NOVA_REACTION_QUESTIONS,
   type NovaReactionOption,
   PAGE_GATE_QUESTIONS,
@@ -23,6 +24,7 @@ import {
   isPassageHard,
   jevEndpointNeedsUrl,
   normalizeJevSettings,
+  noteWorthOf,
   pickNovaReaction,
 } from "./jev-rules";
 
@@ -210,6 +212,34 @@ export async function classifyNovaReactionWithJev(quote: string, comment: string
       settings,
     });
     return pickNovaReaction(answers);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 新边注的一次性判断：表情（受「表情」开关控制）和价值分（墨点样式用）合在一个请求里。
+ * 两者都不需要、未配置 Jev 或请求失败时返回 null / 对应字段为 null。
+ */
+export async function judgeAnnotationWithJev(
+  quote: string,
+  comment: string,
+  options: { worth: boolean },
+): Promise<{ reaction: NovaReactionOption | null; worth: number | null } | null> {
+  const settings = getJevSettings();
+  const wantReaction = settings.mood;
+  const wantWorth = options.worth;
+  if ((!wantReaction && !wantWorth) || !comment.trim() || !isJevConfigured(settings)) return null;
+  const questions = {
+    ...(wantReaction ? NOVA_REACTION_QUESTIONS : {}),
+    ...(wantWorth ? NOTE_WORTH_QUESTIONS : {}),
+  };
+  try {
+    const answers = await requestJevDecisions(buildReactionState(quote, comment), questions, { settings });
+    return {
+      reaction: wantReaction ? pickNovaReaction(answers) : null,
+      worth: wantWorth ? noteWorthOf(answers) : null,
+    };
   } catch {
     return null;
   }

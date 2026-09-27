@@ -202,6 +202,19 @@ export const NOVA_REACTION_QUESTIONS: Record<string, JevQuestion> = {
   },
 };
 
+/** 边注价值：判断 Nova 这条批注是否有洞见，用来决定墨点深浅。 */
+export const NOTE_WORTH_QUESTIONS: Record<string, JevQuestion> = {
+  insightful: {
+    type: "noul",
+    instructions:
+      "这条页边批注是否有洞见、值得读者停下来看？点出伏笔、联系、言外之意，或提出有力的质疑算有洞见；复述原文、泛泛感叹不算。",
+  },
+};
+
+export function noteWorthOf(answers: Record<string, JevAnswer>): number | null {
+  return noulOf(answers.insightful);
+}
+
 export function buildReactionState(quote: string, comment: string): string {
   return `原文：${quote.trim().slice(0, 600)}\n\nNova 的批注：${comment.trim().slice(0, 800)}`;
 }

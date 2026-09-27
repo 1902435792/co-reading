@@ -21,8 +21,8 @@ import { AnimatePresence, motion, useMotionValue, useReducedMotion } from "frame
 import { ChevronRight, Minus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  classifyNovaReactionWithJev,
   isJevConfigured,
+  judgeAnnotationWithJev,
   judgePassageDifficultyWithJev,
   sampleEmotionWithJev,
   useJevSettings,
@@ -40,7 +40,8 @@ import { loadChapterCards, saveChapterCard } from "./chapter-card-store";
 import { NOVA_ASK_ACTIONS, NOVA_ASK_MENU, type NovaAskAction, buildNovaAskPrompt, cleanNovaAnswer } from "./nova-ask";
 import { type NovaAskRequest, registerNovaAsker } from "./nova-bus";
 import { setNovaCompanionMode, useNovaCompanionMode } from "./nova-companion-mode";
-import { useNovaExtras } from "./nova-extras";
+import { getNovaExtras, useNovaExtras } from "./nova-extras";
+import { saveNoteWorth } from "./nova-ink";
 import { NOVA_ONE_SHOT_MOODS, type NovaMood, buildNovaAnimation } from "./nova-lottie";
 import { NovaLottiePlayer } from "./nova-lottie-player";
 import {
@@ -337,13 +338,21 @@ function NovaCompanionInner({
     const block = snapshot.blocks.find((item) => item.annotationId === newest.id);
     const mood = fresh.length > 1 ? "found" : getAnnotationReaction(newest.note);
     react(mood, 5_000);
-    // 可选：让 Jev 根据书评情绪换一张更贴切的表情（未开启或失败时保持上面的表情）。
+    // 可选：Jev 一次请求同时给出更贴切的表情（「表情」开关）和墨点深浅用的价值分（墨点样式）。
+    // 未开启或失败时保持上面的表情，墨点按想法长短估计。
     latestAnnotationIdRef.current = newest.id;
-    void classifyNovaReactionWithJev(newest.text ?? "", newest.note ?? "").then((choice) => {
-      if (!choice || latestAnnotationIdRef.current !== newest.id) return;
-      const image = NOVA_IMAGE_BY_NAME[choice.image];
-      setReaction({ mood: choice.mood, until: Date.now() + 5_000, image });
-    });
+    const wantWorth = getNovaExtras().aiNoteStyle === "ink";
+    for (const note of fresh.slice(-5)) {
+      const isNewest = note.id === newest.id;
+      if (!isNewest && !wantWorth) continue;
+      void judgeAnnotationWithJev(note.text ?? "", note.note ?? "", { worth: wantWorth }).then((result) => {
+        if (!result) return;
+        if (result.worth !== null) saveNoteWorth(note.id, result.worth);
+        if (!isNewest || !result.reaction || latestAnnotationIdRef.current !== newest.id) return;
+        const image = NOVA_IMAGE_BY_NAME[result.reaction.image];
+        setReaction({ mood: result.reaction.mood, until: Date.now() + 5_000, image });
+      });
+    }
     const noteText = newest.note || "我在这里留了一条边注～";
     say({
       kind: "annotation",

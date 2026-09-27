@@ -2,7 +2,7 @@ import { openReadingFootprintForAnnotation } from "@/components/side-chat/co-rea
 import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
 import { askNova } from "@/components/nova/nova-bus";
 import { getNovaExtras, useNovaExtras } from "@/components/nova/nova-extras";
-import { drawInkDot, inkStrength } from "@/components/nova/nova-ink";
+import { NOTE_WORTH_EVENT, drawInkDot, getNoteWorth, inkStrength } from "@/components/nova/nova-ink";
 import { HIGHLIGHT_COLOR_HEX } from "@/services/constants";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useLayoutStore } from "@/store/layout-store";
@@ -135,6 +135,20 @@ const Annotator: React.FC = () => {
     for (const note of notes) void view?.addAnnotation(note);
   }, [aiNoteStyle, view, store]);
 
+  // Jev 给新边注打出价值分后，墨点样式下按新深浅重画这一条。
+  useEffect(() => {
+    const onWorth = (event: Event) => {
+      if (getNovaExtras().aiNoteStyle !== "ink") return;
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      const note = store
+        .getState()
+        .config?.booknotes?.find((item) => item.id === id && item.author === "ai" && !item.deletedAt);
+      if (note) void view?.addAnnotation(note);
+    };
+    window.addEventListener(NOTE_WORTH_EVENT, onWorth);
+    return () => window.removeEventListener(NOTE_WORTH_EVENT, onWorth);
+  }, [view, store]);
+
   const onDrawAnnotation = (event: Event) => {
     const detail = (event as CustomEvent).detail;
     const { draw, annotation, doc, range } = detail;
@@ -146,7 +160,7 @@ const Annotator: React.FC = () => {
       const writingMode: string = el ? doc.defaultView.getComputedStyle(el).writingMode : "";
       draw(drawInkDot, {
         color: hexColor,
-        strength: inkStrength((annotation as BookNote).note),
+        strength: inkStrength((annotation as BookNote).note, getNoteWorth((annotation as BookNote).id)),
         vertical: writingMode.startsWith("vertical"),
       });
       return;

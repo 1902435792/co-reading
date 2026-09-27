@@ -27,11 +27,65 @@ export function inkDotGeometry(rects: readonly InkRect[], vertical: boolean): In
     : { cx: last.right + r + 2, cy: last.top + last.height / 2, r };
 }
 
-/** 想法越长，墨点越深。 */
-export function inkStrength(comment: string | null | undefined): number {
+/**
+ * 墨点深浅：有 Jev 给的价值分（0–1）时按价值分，越有洞见越深；
+ * 没有时退回按想法长短估计。
+ */
+export function inkStrength(comment: string | null | undefined, worth?: number | null): number {
+  if (typeof worth === "number" && Number.isFinite(worth)) {
+    const value = 0.4 + Math.min(1, Math.max(0, worth)) * 0.55;
+    return Math.round(value * 100) / 100;
+  }
   const length = comment?.trim().length ?? 0;
   const value = 0.45 + ((length - 30) / 190) * 0.5;
   return Math.round(Math.min(0.95, Math.max(0.45, value)) * 100) / 100;
+}
+
+// ---------- 边注价值分（本地缓存） ----------
+
+export const NOTE_WORTH_KEY = "deepreader:ai-note-worth";
+export const NOTE_WORTH_EVENT = "deepreader:ai-note-worth-change";
+export const NOTE_WORTH_LIMIT = 2_000;
+
+/** 写入一条价值分，超过上限时丢掉最早写入的。纯函数，便于测试。 */
+export function rememberNoteWorth(
+  map: Record<string, number>,
+  id: string,
+  worth: number,
+  limit = NOTE_WORTH_LIMIT,
+): Record<string, number> {
+  const next = { ...map };
+  delete next[id];
+  next[id] = Math.round(Math.min(1, Math.max(0, worth)) * 1000) / 1000;
+  const keys = Object.keys(next);
+  for (const key of keys.slice(0, Math.max(0, keys.length - limit))) delete next[key];
+  return next;
+}
+
+function readNoteWorthMap(): Record<string, number> {
+  try {
+    const raw = globalThis.localStorage?.getItem(NOTE_WORTH_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getNoteWorth(id: string | undefined): number | null {
+  if (!id) return null;
+  const value = readNoteWorthMap()[id];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** 保存价值分并广播，墨点样式下批注层会据此重画这条边注。 */
+export function saveNoteWorth(id: string, worth: number): void {
+  try {
+    globalThis.localStorage?.setItem(NOTE_WORTH_KEY, JSON.stringify(rememberNoteWorth(readNoteWorthMap(), id, worth)));
+  } catch {
+    return;
+  }
+  globalThis.dispatchEvent?.(new CustomEvent(NOTE_WORTH_EVENT, { detail: { id } }));
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inkDotGeometry, inkStrength } from "./nova-ink.ts";
+import { inkDotGeometry, inkStrength, rememberNoteWorth } from "./nova-ink.ts";
 
 const rect = (left: number, top: number, width: number, height: number) => ({
   left,
@@ -30,4 +30,21 @@ test("inkStrength grows with comment length", () => {
   assert.equal(inkStrength(""), 0.45);
   assert.equal(inkStrength("字".repeat(125)), 0.7);
   assert.equal(inkStrength("字".repeat(400)), 0.95);
+});
+
+test("inkStrength prefers Jev worth over length", () => {
+  assert.equal(inkStrength("字".repeat(400), 0), 0.4);
+  assert.equal(inkStrength("", 1), 0.95);
+  assert.equal(inkStrength("短", 0.5), 0.68);
+  assert.equal(inkStrength("字".repeat(125), null), 0.7);
+  assert.equal(inkStrength("字".repeat(125), Number.NaN), 0.7);
+});
+
+test("rememberNoteWorth caps entries and keeps the newest", () => {
+  let map: Record<string, number> = {};
+  for (let i = 0; i < 5; i++) map = rememberNoteWorth(map, `n${i}`, i / 4, 3);
+  assert.equal(Object.keys(map).join(","), "n2,n3,n4");
+  map = rememberNoteWorth(map, "n2", 2, 3);
+  assert.equal(Object.keys(map).join(","), "n3,n4,n2");
+  assert.equal(map.n2, 1);
 });
