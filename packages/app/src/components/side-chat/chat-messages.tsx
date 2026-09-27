@@ -431,7 +431,7 @@ export function ChatMessages({
                       </MessageAction>
                     </MessageActions>
                     {message.metadata && (
-                      <div className="flex items-center gap-2 text-neutral-500 text-xs dark:text-neutral-400">
+                      <div className="flex items-center gap-2 text-muted-foreground text-xs dark:text-neutral-400">
                         {message.metadata.totalUsage && (
                           <span className="text-xs">{message.metadata.totalUsage.totalTokens} tokens</span>
                         )}
@@ -464,7 +464,7 @@ export function ChatMessages({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="size-7 rounded-full hover:bg-white dark:hover:bg-neutral-600"
+                        className="size-7 rounded-full hover:bg-white dark:hover:bg-accent"
                         disabled={!canRetry}
                         onClick={() => {
                           onRetry?.();
@@ -479,7 +479,7 @@ export function ChatMessages({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-7 rounded-full hover:bg-white dark:hover:bg-neutral-600"
+                      className="size-7 rounded-full hover:bg-white dark:hover:bg-accent"
                     >
                       <Pencil size={12} />
                     </Button>
@@ -490,7 +490,7 @@ export function ChatMessages({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-7 rounded-full hover:bg-white dark:hover:bg-neutral-600"
+                      className="size-7 rounded-full hover:bg-white dark:hover:bg-accent"
                     >
                       <Trash size={12} />
                     </Button>
@@ -500,7 +500,7 @@ export function ChatMessages({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-7 rounded-full hover:bg-white dark:hover:bg-neutral-600"
+                      className="size-7 rounded-full hover:bg-white dark:hover:bg-accent"
                       onClick={() => {
                         const textContent = reorderedMessage.parts
                           .map((part: any) => (part.type === "text" ? part.text : ""))

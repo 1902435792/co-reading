@@ -69,7 +69,7 @@ export const NotepadContent = ({
         <div className="space-y-2 p-1">
           {annotationStatus === "pending" ? (
             <div className="flex items-center justify-center py-8">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-700 dark:border-neutral-600 dark:border-t-neutral-400" />
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-700 dark:border-border dark:border-t-neutral-400" />
             </div>
           ) : annotationStatus === "error" ? (
             <div className="flex items-center justify-center py-8 text-neutral-500 text-sm">

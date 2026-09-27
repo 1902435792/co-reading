@@ -225,7 +225,7 @@ export default function ReaderLayout() {
                   );
                 }}
               >
-                <div className={swapSidebars ? "ml-1 h-[calc(100dvh-48px)]" : "mr-1 h-[calc(100dvh-48px)]"}>
+                <div className={swapSidebars ? "ml-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm" : "mr-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"}>
                   <NotepadContainer bookId={tab.bookId} />
                 </div>
               </Resizable>
@@ -273,7 +273,7 @@ export default function ReaderLayout() {
               >
                 <div
                   className={
-                    swapSidebars ? "mr-1 h-[calc(100dvh-48px)] rounded-md" : "m-1 mt-0 h-[calc(100dvh-48px)] rounded-md"
+                    swapSidebars ? "mr-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm" : "ml-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"
                   }
                 >
                   <SideChat key={`chat-${tab.id}`} bookId={tab.bookId} />

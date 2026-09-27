@@ -182,7 +182,7 @@ export function ChatInputArea({
           value={input}
           onValueChange={handleInputChange}
           onSubmit={handleSubmitWithTransform}
-          className="relative z-10 w-full rounded-2xl border bg-background shadow-around dark:bg-neutral-800"
+          className="relative z-10 w-full rounded-2xl border bg-card shadow-around transition-shadow duration-200 focus-within:shadow-md"
         >
           {isChatPage && (
             <div className="flex items-center justify-between gap-2 py-2">
@@ -195,8 +195,8 @@ export function ChatInputArea({
 
           {/* 斜杠命令菜单 */}
           {showSlashMenu && filteredSkills.length > 0 && (
-            <div className="border-t border-neutral-200 p-1 dark:border-neutral-700">
-              <p className="px-2 py-1 text-neutral-400 text-xs">↑↓ 选择，Enter 确认，Esc 关闭</p>
+            <div className="border-border border-t p-1">
+              <p className="px-2 py-1 text-muted-foreground text-xs">↑↓ 选择，Enter 确认，Esc 关闭</p>
               {filteredSkills.map((skill, index) => (
                 <button
                   key={skill.id}
@@ -204,12 +204,12 @@ export function ChatInputArea({
                   className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                     index === activeIndex
                       ? "bg-primary/10 text-primary dark:bg-primary/20"
-                      : "hover:bg-muted dark:hover:bg-neutral-700"
+                      : "hover:bg-accent hover:bg-muted"
                   }`}
                   onClick={() => handleSlashSelect(skill)}
                   onMouseEnter={() => setActiveIndex(index)}
                 >
-                  <span className="text-neutral-400 text-xs">/</span>
+                  <span className="text-muted-foreground text-xs">/</span>
                   <span className="font-medium">{skill.name}</span>
                 </button>
               ))}
@@ -221,15 +221,15 @@ export function ChatInputArea({
               {references.map((reference) => (
                 <div
                   key={reference.id}
-                  className="group flex w-full items-start gap-2 rounded-xl border border-neutral-200 bg-muted/70 p-2 text-xs dark:border-neutral-700 dark:bg-neutral-700/70"
+                  className="group flex w-full items-start gap-2 rounded-xl border border-border bg-muted/70 p-2 text-xs"
                 >
-                  <Quote className="mt-[1px] size-3.5 text-neutral-600 dark:text-neutral-100" />
-                  <span className="flex-1 whitespace-pre-wrap break-words text-left text-neutral-700 dark:text-neutral-100">
+                  <Quote className="mt-[1px] size-3.5 text-muted-foreground" />
+                  <span className="flex-1 whitespace-pre-wrap break-words text-left text-foreground">
                     {reference.text}
                   </span>
                   <button
                     type="button"
-                    className="mt-0.5 text-neutral-400 transition-colors hover:text-neutral-600 dark:text-neutral-300 dark:hover:text-neutral-100"
+                    className="mt-0.5 text-muted-foreground transition-colors hover:text-foreground"
                     onClick={(event) => {
                       event.stopPropagation();
                       onRemoveReference(reference.id);
@@ -243,7 +243,7 @@ export function ChatInputArea({
           )}
           <PromptInputTextarea
             placeholder="问我任何问题... 输入 / 查看技能"
-            className="flex-1 py-2 pl-2 text-sm leading-[1.3] placeholder:font-light dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-400"
+            className="flex-1 bg-transparent py-2 pl-2 text-foreground text-sm leading-[1.3] placeholder:font-light placeholder:text-muted-foreground"
             onKeyDown={handleKeyDown}
           />
           <div className="flex items-center justify-between gap-2">
@@ -256,7 +256,7 @@ export function ChatInputArea({
                   e.stopPropagation();
                   fileInputRef.current?.click();
                 }}
-                className="size-8 rounded-full dark:border-neutral-600 dark:hover:bg-neutral-700"
+                className="size-8 rounded-full hover:bg-accent dark:border-border"
               >
                 <Paperclip className="size-4" />
               </Button>

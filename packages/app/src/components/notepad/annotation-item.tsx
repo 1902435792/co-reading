@@ -174,7 +174,7 @@ export const AnnotationItem = ({
       {/* hover 删除按钮 */}
       <button
         type="button"
-        className="absolute top-1.5 right-1.5 hidden rounded-full p-0.5 text-neutral-400 transition-colors hover:bg-neutral-300 hover:text-neutral-700 group-hover:block dark:hover:bg-neutral-600 dark:hover:text-neutral-200"
+        className="absolute top-1.5 right-1.5 hidden rounded-full p-0.5 text-neutral-400 transition-colors hover:bg-neutral-300 hover:text-neutral-700 group-hover:block dark:hover:bg-accent dark:hover:text-neutral-200"
         onClick={(e) => {
           e.stopPropagation();
           handleNativeDelete();
@@ -259,7 +259,7 @@ export const AnnotationItem = ({
             </div>
           )}
 
-          <div className="mt-2 flex items-center gap-2 text-neutral-500 text-xs dark:text-neutral-500">
+          <div className="mt-2 flex items-center gap-2 text-muted-foreground text-xs dark:text-neutral-500">
             <span>
               {dayjs(annotation.createdAt).format("YYYY-MM-DD HH:mm:ss")}
             </span>

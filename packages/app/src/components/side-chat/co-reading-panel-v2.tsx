@@ -201,7 +201,7 @@ export function CoReadingPanelV2({ bookId, readingFootprintTarget }: CoReadingPa
           <img
             src={NOVA_STATIC_AVATAR}
             alt=""
-            className="size-10 rounded-full border-2 border-white shadow-sm dark:border-neutral-800"
+            className="size-10 rounded-full border-2 border-white shadow-sm dark:border-border"
           />
           <i
             className={`absolute right-0 bottom-0 size-3 rounded-full border-2 border-background ${

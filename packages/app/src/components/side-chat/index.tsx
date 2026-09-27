@@ -135,12 +135,12 @@ function ChatContent({ bookId }: ChatContentProps) {
       <div className="flex flex-1 flex-col justify-end gap-4">
         <div className="flex items-center gap-3">
           <img
-            className="size-12 rounded-full border-2 border-white shadow-md dark:border-neutral-800"
+            className="size-12 rounded-full border-2 border-white shadow-md dark:border-border"
             src={NOVA_STATIC_AVATAR}
             alt=""
           />
           <div>
-            <h3 className="font-semibold text-lg text-neutral-900 dark:text-neutral-50">问问这本书</h3>
+            <h3 className="font-semibold text-foreground text-lg">问问这本书</h3>
             <p className="text-muted-foreground text-xs">会结合你正在读的位置回答；选中文字后可以直接追问。</p>
           </div>
         </div>
@@ -167,7 +167,7 @@ function ChatContent({ bookId }: ChatContentProps) {
 
   return (
     <main className="flex h-full flex-col overflow-hidden">
-      <div className="ml-1 flex-shrink-0 border-neutral-300 dark:border-neutral-700">
+      <div className="ml-1 flex-shrink-0 border-border">
         <div className="flex h-8 items-center justify-between">
           <div className="flex items-center gap-2 pl-0.5">
             <ModelSelector
@@ -176,11 +176,11 @@ function ChatContent({ bookId }: ChatContentProps) {
               className="z-40 w-[12rem] flex-shrink-0"
             />
           </div>
-          <div className="flex items-center gap-0">
+          <div className="mr-1 flex items-center gap-0.5 rounded-full bg-muted/60 p-0.5">
             <Button
               variant="ghost"
               size="icon"
-              className="z-40 size-7 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              className="z-40 size-7 rounded-full hover:bg-accent"
               title="新对话"
               aria-label="新对话"
               onClick={handleNewThread}
@@ -190,7 +190,7 @@ function ChatContent({ bookId }: ChatContentProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="z-40 size-7 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              className="z-40 size-7 rounded-full hover:bg-accent"
               title="历史对话"
               aria-label="历史对话"
               onClick={handleShowThreads}
@@ -201,7 +201,7 @@ function ChatContent({ bookId }: ChatContentProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="z-40 size-7 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                className="z-40 size-7 rounded-full hover:bg-accent"
                 title="写问答日记（记进 VCP）"
                 aria-label="写问答日记"
                 disabled={messages.length === 0}
@@ -213,7 +213,7 @@ function ChatContent({ bookId }: ChatContentProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="z-40 size-7 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              className="z-40 size-7 rounded-full hover:bg-accent"
               title="设置（模型提供商）"
               aria-label="设置"
               onClick={() => openSettings("model-providers")}
