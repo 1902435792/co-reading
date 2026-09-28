@@ -35,7 +35,8 @@ tauri-plugin-llamacpp = { path = "plugins/tauri-plugin-llamacpp" }
 tauri-plugin-epub = { path = "plugins/tauri-plugin-epub" }
 jan-utils = { path = "utils" }
 tauri-plugin-log = "2"
-reqwest = { version = "0.12", features = ["stream"] }
+# 安卓构建不能依赖系统 OpenSSL，统一改用 rustls
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls", "charset", "http2"] }
 futures-util = "0.3"
 tauri-plugin-os = "2"
 tauri-plugin-shell = "2"

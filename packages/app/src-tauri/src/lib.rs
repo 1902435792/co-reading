@@ -48,10 +48,13 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_os::init());
+    // 全局快捷键插件只在桌面端存在（Cargo.toml 里已按平台排除），安卓/iOS 不注册
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
+    builder
         .manage(AppState::default())
         .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_http::init())
@@ -67,7 +70,9 @@ pub fn run() {
         .plugin(tauri_plugin_epub::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
-            if std::env::consts::OS == "windows" {
+            // set_decorations 只在桌面端存在，改为编译期判断，安卓构建不会编译这段
+            #[cfg(target_os = "windows")]
+            {
                 if let Some(window) = app.get_webview_window("main") {
                     if let Err(e) = window.set_decorations(false) {
                         eprintln!("Failed to set window decorations: {}", e);

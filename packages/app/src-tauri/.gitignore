@@ -9,3 +9,4 @@
 # GNU toolchain build output (see D:\tools\gnu-build.sh)
 /target-gnu/
 /binaries/*-windows-gnu.exe
+/target-android/
