@@ -41,7 +41,6 @@ import {
 import type { JevSentencePick } from "@/services/jev-rules";
 import {
   claimCoReadingBlocks,
-  revisitCoReadingBlocks,
   completeCoReadingBatch,
   getCoReadingSnapshot,
   persistCoReadingFocus,
@@ -115,10 +114,8 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
   const workerGenerationRef = useRef(0);
   /** 正在进行的批次：模型慢时允许并发（见 canStartRun）。 */
   const activeRunsRef = useRef(new Map<number, OrdinaryCoReadingRun>());
-  /** 提前排进队列的「下一页」段落；以及已经让 Nova 重看过一次的段落（每段每次会话最多一次）。 */
+  /** 已经提前排进队列的「下一页」段落（避免重复排队）。 */
   const aheadQueuedRef = useRef(new Set<string>());
-  const revisitedRef = useRef(new Set<string>());
-  const lastVisibleKeysRef = useRef(new Set<string>());
   /**
    * 动态并发：没有进行中的批次，或者进行中的都已经等了 15 秒以上（模型慢，比如 -high），
    * 就可以再发一批，最多同时 2 批。模型快时仍然一批一批来。
@@ -815,27 +812,6 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
     upsertCoReadingBlocks(extracted)
       .then((saved) => {
         if (cancelled || generation !== samplingGenerationRef.current) return;
-        lastVisibleKeysRef.current = new Set(saved.map((block) => block.blockKey));
-        // 提前批注时 Nova 没说话的段落：主人真正读到、停留够了，再让她看一眼（想加就加）。
-        const trigger = getCoReadingTrigger();
-        for (const block of saved) {
-          if (
-            block.status !== "silent" ||
-            !aheadQueuedRef.current.has(block.blockKey) ||
-            revisitedRef.current.has(block.blockKey)
-          )
-            continue;
-          revisitedRef.current.add(block.blockKey);
-          window.setTimeout(() => {
-            if (!mountedRef.current || !lastVisibleKeysRef.current.has(block.blockKey)) {
-              revisitedRef.current.delete(block.blockKey);
-              return;
-            }
-            void revisitCoReadingBlocks(bookId, [block.blockKey])
-              .then((count) => (count > 0 ? refreshSnapshot() : undefined))
-              .catch(() => undefined);
-          }, requiredDwellMs(block.text, trigger.smart, trigger.seconds));
-        }
         void queueAheadPage(saved.map((block) => block.blockKey)).catch(() => undefined);
         const visible: TrackedBlock[] = [];
         for (const block of saved) {

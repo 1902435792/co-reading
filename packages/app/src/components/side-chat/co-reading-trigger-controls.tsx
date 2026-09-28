@@ -66,7 +66,7 @@ export function CoReadingTriggerControls() {
       </label>
       <p className="pl-6 text-[11px] text-muted-foreground leading-relaxed">
         {trigger.ahead
-          ? "Nova 一直比你快一页：你翻到哪，她就先写下一页；提前看时没说话的段落，你真正读到时她还会再看一眼。模型慢时会同时多发一批。"
+          ? "Nova 一直比你快一页：你翻到哪，她就先写下一页，等你读到时边注多半已经写好。模型慢时会同时多发一批。"
           : "每段读完才交给 Nova，一次只发一批。"}
       </p>
 
