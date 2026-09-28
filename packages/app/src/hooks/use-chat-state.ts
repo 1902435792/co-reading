@@ -75,6 +75,10 @@ export interface ChatContext {
   /** Live Foliate location captured from the reader store at render/send time. */
   activeReadingPosition?: VisibleReadingPosition;
   activeSelectionText?: string;
+  /** 快捷按钮按需附带：本章从开头到当前位置的原文。 */
+  activeChapterSoFar?: string;
+  /** 快捷按钮按需附带：全书目录。 */
+  activeToc?: string;
   messageCount?: number; // 当前对话诚话数，用于控制元信息注入频率
 }
 

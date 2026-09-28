@@ -20,7 +20,6 @@ import {
   CircleAlert,
   Clock3,
   ListChecks,
-  MapIcon,
   Pause,
   Play,
   Settings2,
@@ -72,8 +71,8 @@ export function CoReadingPanelV2({ bookId, readingFootprintTarget }: CoReadingPa
   useEffect(() => window.localStorage.setItem(storageKey, String(expanded)), [expanded, storageKey]);
   useEffect(() => {
     if (!readingFootprintTarget || readingFootprintTarget.bookId !== bookId) return;
+    // 阅读地图已隐藏：外部跳转只展开面板。
     setExpanded(true);
-    setSection("map");
   }, [bookId, readingFootprintTarget]);
   if (!snapshot) return <div className="p-4 text-muted-foreground text-xs">正在载入 AI 共读…</div>;
 
@@ -364,15 +363,7 @@ export function CoReadingPanelV2({ bookId, readingFootprintTarget }: CoReadingPa
                 <CoReadingRangeMap bookId={bookId} mode="range" />
               </AccordionContent>
             </AccordionItem>
-            <AccordionItem value="map">
-              <AccordionTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm">
-                <MapIcon className="size-4 text-primary" />
-                阅读地图
-              </AccordionTrigger>
-              <AccordionContent className="px-3 pb-3">
-                <CoReadingRangeMap bookId={bookId} mode="map" readingFootprintTarget={readingFootprintTarget} />
-              </AccordionContent>
-            </AccordionItem>
+            {/* 「阅读地图」主人觉得没用，先隐藏（组件还在，需要时可恢复）。 */}
             <AccordionItem value="failures">
               <AccordionTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm">
                 <ListChecks className="size-4" />

@@ -26,6 +26,8 @@ export async function buildReadingPrompt(
     chatContext?.activeReadingPosition
   );
   const activeSelectionText = chatContext?.activeSelectionText;
+  const activeChapterSoFar = chatContext?.activeChapterSoFar;
+  const activeToc = chatContext?.activeToc;
   let systemPromptBase = "";
   let activeSkillDescriptions: { name: string; description: string }[] = [];
   let skillsMs = 0;
@@ -166,6 +168,14 @@ export async function buildReadingPrompt(
 
   if (activePageText && activePageText.trim().length > 0) {
     prompt += `\n\n【当前阅读页面内容】\n${activePageText}`;
+  }
+
+  if (activeChapterSoFar && activeChapterSoFar.trim().length > 0) {
+    prompt += `\n\n【本章从开头到主人当前读到的位置】（只到这里；后面主人还没读，不要剧透）\n${activeChapterSoFar}`;
+  }
+
+  if (activeToc && activeToc.trim().length > 0) {
+    prompt += `\n\n【全书目录】（只有目录，没有正文；不要编造具体内容）\n${activeToc}`;
   }
 
   if (semanticContext && semanticContext.trim().length > 0) {

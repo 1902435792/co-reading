@@ -19,26 +19,57 @@ interface ChatInputAreaProps {
   onSubmit: (promptOverride?: string) => Promise<void>;
   onStop: () => void;
   setActiveBookId: (bookId: string | undefined) => void;
+  /** 点快捷按钮时登记要附带的材料（本章原文 / 目录）。 */
+  onQuickExtras?: (extras: QuickExtra[]) => void;
 }
+
+/** 快捷按钮发送时要附带的材料：chapter = 本章从开头到当前位置的原文，toc = 全书目录。 */
+export type QuickExtra = "chapter" | "toc";
 
 /**
  * QuickAction：只放不需要额外用户输入的动作。
  * 需要输入的（解释概念等）走斜杠命令。
  */
-const QUICK_ACTIONS = [
-  { label: "总结本章", icon: BookOpen, prompt: "帮我总结当前章节的核心论点、推理路径和关键结论。" },
-  { label: "知识图谱", icon: Brain, prompt: "帮我把当前内容生成一个 Mermaid 知识图谱。" },
+const QUICK_ACTIONS: readonly {
+  label: string;
+  icon: typeof BookOpen;
+  tone: string;
+  prompt: string;
+  extras: QuickExtra[];
+}[] = [
+  {
+    label: "总结本章",
+    icon: BookOpen,
+    tone: "text-sky-600 dark:text-sky-400",
+    prompt:
+      "帮我总结这一章从开头到我现在读到的地方：核心观点、推理脉络、关键结论，最后留一两个值得带着读下去的问题。只根据附带的本章原文，别剧透后面。",
+    extras: ["chapter"],
+  },
+  {
+    label: "知识图谱",
+    icon: Brain,
+    tone: "text-violet-600 dark:text-violet-400",
+    prompt:
+      "用 Mermaid 画出这一章到目前为止的概念关系图：节点用简短的中文概念，连线上写清关系，控制在 15 个节点以内，只画原文里真的出现的内容。图后用两三句话说说最关键的那条线索。",
+    extras: ["chapter"],
+  },
   {
     label: "笔记格式化",
     icon: FileText,
-    prompt: "帮我把我们刚才的对话整理成一篇结构化的 Obsidian 笔记，先呈现给我看，我确认后再保存。",
+    tone: "text-emerald-600 dark:text-emerald-400",
+    prompt:
+      "把我们这次的对话整理成一篇 Obsidian 笔记：标题、书名和章节、我的问题和你回答的要点、提到的原文摘录（照抄并注明章节）、我的想法、还想继续想的问题。先给我看，我确认后再保存。",
+    extras: [],
   },
   {
     label: "预读导航",
     icon: Compass,
-    prompt: "我准备开始读这本书，帮我做一个预读导航——了解全书结构、重点章节、阅读路径建议。",
+    tone: "text-amber-600 dark:text-amber-400",
+    prompt:
+      "根据附带的全书目录帮我做一个预读导航：这本书大概在讲什么、分成哪几部分、每部分起什么作用、哪些章节值得细读、哪些可以略读，再给一条阅读路线。只根据书名和目录，不要编造具体内容，不剧透结局。",
+    extras: ["toc"],
   },
-] as const;
+];
 
 export function ChatInputArea({
   input,
@@ -48,6 +79,7 @@ export function ChatInputArea({
   showToolDetail = false,
 
   setActiveBookId,
+  onQuickExtras,
   onRemoveReference,
   onSubmit,
   onStop,
@@ -96,7 +128,8 @@ export function ChatInputArea({
     [setInput, slashSkills, showSlashMenu, loadSkills],
   );
 
-  const handleQuickPrompt = (prompt: string) => {
+  const handleQuickPrompt = (prompt: string, extras: QuickExtra[]) => {
+    onQuickExtras?.(extras);
     setInput(prompt);
     if (status === "ready") {
       void onSubmit(prompt);
@@ -153,17 +186,17 @@ export function ChatInputArea({
   );
 
   const renderQuickButtons = () =>
-    QUICK_ACTIONS.map(({ label, icon: Icon, prompt }) => (
+    QUICK_ACTIONS.map(({ label, icon: Icon, tone, prompt, extras }) => (
       <PromptInputAction key={label} tooltip={label}>
-        <Button
-          variant="soft"
-          className="h-7 cursor-pointer"
-          size="sm"
-          onClick={() => handleQuickPrompt(prompt)}
+        <button
+          type="button"
+          disabled={status !== "ready"}
+          className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-2.5 text-foreground/80 text-xs shadow-sm transition-colors hover:border-primary/40 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => handleQuickPrompt(prompt, extras)}
         >
-          <Icon className="size-4" />
-          {!showToolDetail && <span className="text-xs">{label}</span>}
-        </Button>
+          <Icon className={`size-3.5 ${tone}`} />
+          {!showToolDetail && <span>{label}</span>}
+        </button>
       </PromptInputAction>
     ));
 

@@ -1,3 +1,6 @@
+import { chapterTextUntil, clipChapterSoFar, formatToc } from "@/lib/reading-extras";
+import type { QuickExtra } from "./chat-input-area";
+import { resolveVisibleCoReadingRanges } from "@/lib/co-reading-dom";
 import { Button } from "@/components/ui/button";
 import { useChatState } from "@/hooks/use-chat-state";
 import { createVisibleReadingPosition } from "@/lib/reading-position";
@@ -7,7 +10,7 @@ import { openSettings } from "@/components/settings/open-settings";
 import { useThemeStore } from "@/store/theme-store";
 import type { ReadingFootprintTarget } from "@/types/co-reading";
 import { BookOpenText, History, MessageCirclePlus, MessagesSquare, NotebookPen, Settings } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatContainerRoot } from "../prompt-kit/chat-container";
 import { ScrollButton } from "../prompt-kit/scroll-button";
 import { MindmapDialog } from "../tools/mindmap-dialog";
@@ -36,35 +39,60 @@ function ChatContent({ bookId }: ChatContentProps) {
   const setCurrentThread = useReaderStore((state) => state.setCurrentThread)!;
   const view = useReaderStore((state) => state.view);
 
-  // CTX-01: 提取当前可视页面文本，限制长度并标记截断状态，避免系统提示词过长
+  // 快捷按钮按需附带的材料：点按钮时登记，发送时取用，20 秒后自动作废（普通提问不带，省 token）。
+  const pendingExtrasRef = useRef<{ kinds: QuickExtra[]; expiresAt: number } | null>(null);
+  const requestQuickExtras = useCallback((kinds: QuickExtra[]) => {
+    pendingExtrasRef.current = kinds.length > 0 ? { kinds, expiresAt: Date.now() + 20_000 } : null;
+  }, []);
+  const getQuickExtras = useCallback((): { activeChapterSoFar?: string; activeToc?: string } => {
+    const pending = pendingExtrasRef.current;
+    if (!pending || pending.expiresAt < Date.now() || !view?.renderer) return {};
+    const current = readerStore.getState().progress;
+    const extras: { activeChapterSoFar?: string; activeToc?: string } = {};
+    try {
+      if (pending.kinds.includes("chapter")) {
+        const ranges = resolveVisibleCoReadingRanges(view, {
+          location: current?.location,
+          sectionIndex: current?.sectionIndex,
+          range: current?.range ?? null,
+        });
+        const last = ranges[ranges.length - 1];
+        if (last) extras.activeChapterSoFar = clipChapterSoFar(chapterTextUntil(last.range));
+      }
+      if (pending.kinds.includes("toc")) {
+        extras.activeToc = formatToc(view.book?.toc, current?.sectionLabel);
+      }
+    } catch {
+      // 取不到就不带。
+    }
+    return extras;
+  }, [view, readerStore]);
+
+  // CTX-01: 提取当前屏幕上真正看得到的正文（限长），告诉 Nova 主人读到哪了。
+  // 以前取的是整章文档的前 2000 字：章节一长，读到后面 Nova 还在看开头。
   const getCurrentPageText = useCallback((): string => {
     if (!view?.renderer) return "";
     try {
-      const contents = view.renderer.getContents?.();
-      if (!Array.isArray(contents) || contents.length === 0) return "";
-      const visibleDocs = (view.renderer.getVisibleRanges?.() ?? [])
-        .map((item) => item.range?.startContainer.ownerDocument)
-        .filter((doc): doc is Document => Boolean(doc));
-      const docs =
-        visibleDocs.length > 0
-          ? [...new Set(visibleDocs)]
-          : contents.map(({ doc }) => doc).filter((doc): doc is Document => Boolean(doc));
-      const fullText = docs
-        .map((doc) => {
-          if (!doc.body) return "";
-          return doc.body.innerText || doc.body.textContent || "";
-        })
+      const current = readerStore.getState().progress;
+      const ranges = resolveVisibleCoReadingRanges(view, {
+        location: current?.location,
+        sectionIndex: current?.sectionIndex,
+        range: current?.range ?? null,
+      });
+      const visibleText = ranges
+        .map(({ range }) => range.toString())
         .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
         .trim();
       const MAX_PAGE_TEXT_LENGTH = 2000;
-      if (fullText.length > MAX_PAGE_TEXT_LENGTH) {
-        return `${fullText.slice(0, MAX_PAGE_TEXT_LENGTH)}\n……（已截断）`;
+      if (visibleText.length > MAX_PAGE_TEXT_LENGTH) {
+        return `${visibleText.slice(0, MAX_PAGE_TEXT_LENGTH)}\n……（已截断）`;
       }
-      return fullText;
+      return visibleText;
     } catch {
       return "";
     }
-  }, [view]);
+  }, [view, readerStore]);
 
   const {
     input,
@@ -117,6 +145,7 @@ function ChatContent({ bookId }: ChatContentProps) {
           pageCurrent: current.progress?.pageinfo?.current,
           pageTotal: current.progress?.pageinfo?.total,
         }),
+        ...getQuickExtras(),
       };
     },
     setActiveBookId: () => {},
@@ -265,6 +294,7 @@ function ChatContent({ bookId }: ChatContentProps) {
           status={status}
           activeBookId={bookId}
           setActiveBookId={() => {}}
+          onQuickExtras={requestQuickExtras}
         />
       )}
 
