@@ -417,3 +417,42 @@ export function contextAroundRange(
       .replace(/\s+/gu, " "),
   };
 }
+
+const AHEAD_BLOCK_SELECTOR = "p,li,blockquote,pre,h1,h2,h3,h4,h5,h6";
+
+/**
+ * 「下一页」：从可见区域末尾往后取大约 chars 个字，并延伸到所在段落末尾（别在段落中间截断）。
+ * 只在同一个章节文档里取；到章节末尾就到此为止（翻进下一章时再从那里继续）。
+ */
+export function rangeAfterVisible(visible: Range, chars: number): Range | null {
+  const doc = visible.endContainer.ownerDocument;
+  const body = doc?.body;
+  if (!doc || !body || chars <= 0) return null;
+  const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  let started = false;
+  let remaining = chars;
+  const ahead = doc.createRange();
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    const length = node.data.length;
+    let from = 0;
+    if (!started) {
+      if (node === visible.endContainer) {
+        from = visible.endOffset;
+      } else if (visible.comparePoint(node, 0) !== 1) {
+        continue; // 还在可见区域里或之前
+      }
+      started = true;
+      ahead.setStart(node, from);
+    }
+    const available = length - from;
+    if (available >= remaining) {
+      ahead.setEnd(node, from + remaining);
+      const block = node.parentElement?.closest(AHEAD_BLOCK_SELECTOR);
+      if (block && body.contains(block)) ahead.setEnd(block, block.childNodes.length);
+      return ahead.toString().trim() ? ahead : null;
+    }
+    remaining -= available;
+    ahead.setEnd(node, length);
+  }
+  return started && ahead.toString().trim() ? ahead : null;
+}

@@ -71,6 +71,11 @@ export function getQueuedCoReadingBlocks(
   });
 }
 
+/** 提前批注时没说话的段落，主人读到时让 Nova 再看一眼（只动 silent）。 */
+export function revisitCoReadingBlocks(bookId: string, blockKeys: string[]): Promise<number> {
+  return invoke<number>("revisit_co_reading_blocks", { data: { bookId, blockKeys } });
+}
+
 export function claimCoReadingBlocks(
   bookId: string,
   blockKeys: string[]

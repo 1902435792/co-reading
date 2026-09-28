@@ -13,6 +13,7 @@ use crate::core::{
         claim_co_reading_blocks, complete_co_reading_batch, get_co_reading_diary_sources,
         get_co_reading_snapshot, get_queued_co_reading_blocks, mark_co_reading_diary_written,
         persist_co_reading_focus, release_co_reading_focus, retry_co_reading_blocks,
+        revisit_co_reading_blocks,
         update_co_reading_settings, upsert_co_reading_blocks,
     },
     co_reading::range::{
@@ -127,6 +128,7 @@ pub fn run() {
             upsert_co_reading_blocks,
             get_queued_co_reading_blocks,
             claim_co_reading_blocks,
+            revisit_co_reading_blocks,
             complete_co_reading_batch,
             persist_co_reading_focus,
             release_co_reading_focus,

@@ -11,6 +11,7 @@ import {
   contextAroundRange,
   extractVisibleCoReadingFocus,
   locateExactQuoteRange,
+  rangeAfterVisible,
   resolveVisibleCoReadingRanges,
 } from "@/lib/co-reading-dom";
 import { resolveCoReadingModel } from "@/lib/co-reading-model";
@@ -40,6 +41,7 @@ import {
 import type { JevSentencePick } from "@/services/jev-rules";
 import {
   claimCoReadingBlocks,
+  revisitCoReadingBlocks,
   completeCoReadingBatch,
   getCoReadingSnapshot,
   persistCoReadingFocus,
@@ -113,6 +115,10 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
   const workerGenerationRef = useRef(0);
   /** 正在进行的批次：模型慢时允许并发（见 canStartRun）。 */
   const activeRunsRef = useRef(new Map<number, OrdinaryCoReadingRun>());
+  /** 提前排进队列的「下一页」段落；以及已经让 Nova 重看过一次的段落（每段每次会话最多一次）。 */
+  const aheadQueuedRef = useRef(new Set<string>());
+  const revisitedRef = useRef(new Set<string>());
+  const lastVisibleKeysRef = useRef(new Set<string>());
   /**
    * 动态并发：没有进行中的批次，或者进行中的都已经等了 15 秒以上（模型慢，比如 -high），
    * 就可以再发一批，最多同时 2 批。模型快时仍然一批一批来。
@@ -503,6 +509,20 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
             )
           )
         ).filter((note): note is CoReadingNoteCreateData => Boolean(note));
+        // 去重：跨页的段落会被拆成两块，Nova 可能对同一句写两次；并发时更容易撞上。
+        // 引文和已有的 Nova 边注（或本批前面的）互相包含，就不再重复写。
+        const normalizeQuote = (text: string) => text.replace(/\s+/gu, "");
+        const seenQuotes = (store.getState().config?.booknotes ?? [])
+          .filter((note) => note.type === "annotation" && note.author === "ai" && !note.deletedAt && !isJevPickNote(note))
+          .map((note) => normalizeQuote(note.text ?? ""))
+          .filter((text) => text.length >= 4);
+        const dedupedNotes = preparedNotes.filter((note) => {
+          const quote = normalizeQuote(note.text ?? "");
+          if (quote.length < 4) return true;
+          if (seenQuotes.some((seen) => seen.includes(quote) || quote.includes(seen))) return false;
+          seenQuotes.push(quote);
+          return true;
+        });
         assertRunning();
 
         // 后端一次只能持久化同一个页面焦点：按焦点分组依次写入，摘要跟最后一组一起写。
@@ -521,7 +541,7 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
           const persisted = await persistCoReadingFocus({
             bookId,
             blockKeys: keys,
-            notes: preparedNotes.filter((note) => keySet.has(note.blockKey)),
+            notes: dedupedNotes.filter((note) => keySet.has(note.blockKey)),
             rollingSummary:
               index === groups.length - 1 ? validated.summary : undefined,
           });
@@ -767,9 +787,56 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
     }
     visibleFocusRef.current = extractedFocus;
 
+    // 一直比主人快一页：把可见区域后面约一页（延伸到段落末尾）直接排进队列，交给 Nova 先写。
+    const queueAheadPage = async (visibleKeys: string[]) => {
+      if (!getCoReadingTrigger().ahead) return;
+      const last = visibleRanges[visibleRanges.length - 1];
+      if (!last) return;
+      const visibleChars = visibleRanges.reduce((sum, item) => sum + item.range.toString().length, 0);
+      const aheadRange = rangeAfterVisible(last.range, Math.min(3000, Math.max(400, visibleChars)));
+      if (!aheadRange) return;
+      const skip = new Set(visibleKeys);
+      const now = Date.now();
+      const aheadBlocks = extractVisibleCoReadingFocus(
+        bookId,
+        view,
+        [{ index: last.index, range: aheadRange }],
+        progress.sectionLabel
+      )
+        .filter((block) => !skip.has(block.blockKey) && !aheadQueuedRef.current.has(block.blockKey))
+        .map((block) => ({ ...block, status: "queued" as const, unlockedAt: block.unlockedAt ?? now }));
+      if (aheadBlocks.length === 0) return;
+      for (const block of aheadBlocks) aheadQueuedRef.current.add(block.blockKey);
+      await upsertCoReadingBlocks(aheadBlocks);
+      if (cancelled) return;
+      await refreshSnapshot();
+    };
+
     upsertCoReadingBlocks(extracted)
       .then((saved) => {
         if (cancelled || generation !== samplingGenerationRef.current) return;
+        lastVisibleKeysRef.current = new Set(saved.map((block) => block.blockKey));
+        // 提前批注时 Nova 没说话的段落：主人真正读到、停留够了，再让她看一眼（想加就加）。
+        const trigger = getCoReadingTrigger();
+        for (const block of saved) {
+          if (
+            block.status !== "silent" ||
+            !aheadQueuedRef.current.has(block.blockKey) ||
+            revisitedRef.current.has(block.blockKey)
+          )
+            continue;
+          revisitedRef.current.add(block.blockKey);
+          window.setTimeout(() => {
+            if (!mountedRef.current || !lastVisibleKeysRef.current.has(block.blockKey)) {
+              revisitedRef.current.delete(block.blockKey);
+              return;
+            }
+            void revisitCoReadingBlocks(bookId, [block.blockKey])
+              .then((count) => (count > 0 ? refreshSnapshot() : undefined))
+              .catch(() => undefined);
+          }, requiredDwellMs(block.text, trigger.smart, trigger.seconds));
+        }
+        void queueAheadPage(saved.map((block) => block.blockKey)).catch(() => undefined);
         const visible: TrackedBlock[] = [];
         for (const block of saved) {
           if (block.status !== "tracking" && block.status !== "queued")
@@ -834,6 +901,7 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
     flush,
     isVisible,
     progress,
+    refreshSnapshot,
     snapshot?.settings.status,
     samplingTick,
     store,

@@ -881,6 +881,36 @@ pub async fn retry_blocks(
     Ok(affected)
 }
 
+/// 提前批注时 Nova 没说话（silent）的段落：主人真正读到时再给她看一眼（前端每段每次会话最多一次）。
+/// 只动 silent，已有批注 / 正在处理 / 失败的都不碰。
+pub async fn revisit_blocks(
+    pool: &SqlitePool,
+    data: RetryCoReadingBlocksData,
+) -> Result<u64, String> {
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| format!("开启事务失败: {e}"))?;
+    let mut affected = 0;
+    for block_key in data.block_keys {
+        affected += sqlx::query(
+            "UPDATE co_reading_blocks SET status = 'queued', decision = NULL, error = NULL, processed_at = NULL, updated_at = ? WHERE book_id = ? AND block_key = ? AND status = 'silent'",
+        )
+        .bind(now)
+        .bind(&data.book_id)
+        .bind(block_key)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| format!("重看共读文本块失败: {e}"))?
+        .rows_affected();
+    }
+    tx.commit()
+        .await
+        .map_err(|e| format!("提交事务失败: {e}"))?;
+    Ok(affected)
+}
+
 pub async fn get_snapshot(
     pool: &SqlitePool,
     book_id: &str,
@@ -1347,4 +1377,13 @@ pub async fn retry_co_reading_blocks(
 ) -> Result<u64, String> {
     let pool = app_pool(&app_handle).await?;
     retry_blocks(&pool, data).await
+}
+
+#[tauri::command]
+pub async fn revisit_co_reading_blocks(
+    app_handle: AppHandle,
+    data: RetryCoReadingBlocksData,
+) -> Result<u64, String> {
+    let pool = app_pool(&app_handle).await?;
+    revisit_blocks(&pool, data).await
 }
