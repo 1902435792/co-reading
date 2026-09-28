@@ -1,3 +1,4 @@
+import { trackDiaryWrite } from "@/services/diary-background";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -52,7 +53,8 @@ export function QaDiaryDialog({ open, onOpenChange, bookId, bookTitle, sectionLa
       setSubmitting(true);
       setFeedback(null);
       const payload = buildQaDiaryPayload({ bookTitle, pairs: selected, sectionLabel });
-      const confirmed = await postVcpDiaryPayload(payload);
+      // 后台写入：对话框关掉也会继续，写完弹通知。
+      const confirmed = await trackDiaryWrite(postVcpDiaryPayload(payload));
       setWritten(
         markQaDiaryWritten(
           bookId,
@@ -72,7 +74,7 @@ export function QaDiaryDialog({ open, onOpenChange, bookId, bookTitle, sectionLa
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !submitting && onOpenChange(next)}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -117,8 +119,8 @@ export function QaDiaryDialog({ open, onOpenChange, bookId, bookTitle, sectionLa
           )}
         </div>
         <DialogFooter>
-          <Button type="button" variant="ghost" disabled={submitting} onClick={() => onOpenChange(false)}>
-            关闭
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            {submitting ? "后台继续写" : "关闭"}
           </Button>
           <Button type="button" disabled={submitting || selected.length === 0} onClick={() => void submit()}>
             {submitting && <LoaderCircle className="mr-1 size-4 animate-spin" />}

@@ -23,7 +23,8 @@ export const DEFAULT_CO_READING_TRIGGER: CoReadingTriggerSettings = {
   smart: true,
   seconds: 2,
   wavy: true,
-  fast: true,
+  // 默认按选中的模型原样请求（主人选了 -high 就用深度思考版）。
+  fast: false,
 };
 
 const STORAGE_KEY = "deepreader:co-reading-trigger";

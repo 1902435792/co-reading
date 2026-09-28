@@ -1,3 +1,4 @@
+import { installDiaryCloseGuard } from "@/services/diary-background";
 import { CoReadingDiaryDialog } from "@/components/side-chat/co-reading-diary-dialog";
 import { CO_READING_DIARY_DEFAULT_COUNT, getCoReadingDiarySelectionState } from "@/lib/co-reading-diary";
 import { getCoReadingDiarySources } from "@/services/co-reading-service";
@@ -68,6 +69,8 @@ export function toastDiaryProposal(proposal: DiaryProposal, bookId: string, book
 /** 挂在应用根部：阅读页关掉以后也能打开共读日记对话框。 */
 export function NovaDiaryHost() {
   const [target, setTarget] = useState<{ bookId: string; bookTitle: string } | null>(null);
+  // 桌面版：写日记时关窗口，先藏起来等写完再退出。
+  useEffect(() => installDiaryCloseGuard(), []);
   useEffect(() => {
     const onOpen = (event: Event) => {
       const detail = (event as CustomEvent<{ bookId?: string; bookTitle?: string }>).detail;

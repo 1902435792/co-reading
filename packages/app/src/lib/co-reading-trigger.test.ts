@@ -17,7 +17,7 @@ import {
 test("normalizeCoReadingTrigger fills defaults and clamps seconds", () => {
   assert.deepEqual(normalizeCoReadingTrigger(null), DEFAULT_CO_READING_TRIGGER);
   assert.equal(DEFAULT_CO_READING_TRIGGER.seconds, 2);
-  assert.equal(DEFAULT_CO_READING_TRIGGER.fast, true);
+  assert.equal(DEFAULT_CO_READING_TRIGGER.fast, false);
   assert.equal(normalizeCoReadingTrigger({ seconds: 0 }).seconds, 1);
   assert.equal(normalizeCoReadingTrigger({ seconds: 99 }).seconds, 10);
   assert.equal(normalizeCoReadingTrigger({ seconds: "3" }).seconds, 2);

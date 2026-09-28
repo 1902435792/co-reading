@@ -150,18 +150,24 @@ export default function CoReadingSettings() {
       </section>
 
       <section className="rounded-lg bg-muted/80 p-4">
-        <h2 className="text mb-3 dark:text-neutral-200">共读模型</h2>
-        <ul className="list-disc space-y-1.5 pl-4 text-muted-foreground text-xs leading-relaxed">
-          <li>每本书的共读模型在阅读页右侧「共读」面板里选；不单独选择时，跟随问答当前选中的模型。</li>
+        <h2 className="text mb-3 dark:text-neutral-200">共读模型怎么配</h2>
+        <ol className="list-decimal space-y-1.5 pl-4 text-muted-foreground text-xs leading-relaxed">
           <li>
-            选基础模型即可，Profile 前缀会自动加。带 <code>-high</code> 的是深度思考版：更细致，但每次要 1–3
-            分钟；自动边注默认用快速版（共读面板里的「快速模型」开关）。
+            添加模型：设置 → 模型提供商 → VCP Bridge → 添加模型，只填基础模型名，比如{" "}
+            <code>gemini-3.8-flash-high</code> 或 <code>gemini-3.8-flash</code>，
+            <b>不用写 Profile 前缀</b>。
           </li>
-          <li>深度思考模型单次可能要 1–3 分钟；共读请求最长等 180 秒，超时后进度会保留，可以稍后重试。</li>
+          <li>选共读模型：在阅读页右侧「共读」面板顶部选；不单独选，就跟随问答用的模型。</li>
           <li>
-            「共读日记」按钮使用专用路由 <code>deepreader-coreading-diary</code>，一般不用改。
+            Profile 自动加：自动共读 → <code>coreading-lite</code>，问答 → <code>reading</code>，记忆提取 →{" "}
+            <code>memory-extract</code>；写日记走专用的「阅读器日记 Nova」，仍然是 Nova 本人在写。
           </li>
-        </ul>
+          <li>
+            带 <code>-high</code> = 深度思考：想得更细，每次约 1–3 分钟；不带 = 快，通常几秒到十几秒。想临时提速，打开共读面板里的「快速模型」开关（会自动去掉{" "}
+            <code>-high</code>），不用改模型。
+          </li>
+          <li>VCP 那边不锁定模型，以这里选的为准。共读请求最长等 180 秒，超时进度会保留，可以稍后重试。</li>
+        </ol>
       </section>
 
       <JevSettingsSection />

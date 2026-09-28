@@ -1,3 +1,4 @@
+import { trackDiaryWrite } from "@/services/diary-background";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -108,7 +109,8 @@ export function CoReadingDiaryDialog({
         new Date(),
         (annotationId) => getNoteThread(bookId, annotationId)
       );
-      const result = await createCoReadingDiary(bookId, payload);
+      // 后台写入：对话框关掉也会继续，写完弹通知。
+      const result = await trackDiaryWrite(createCoReadingDiary(bookId, payload));
       const successMessage =
         result.message ||
         `VCP 已将 ${result.writtenCount} 条共读记录写入今日日记`;
@@ -127,7 +129,7 @@ export function CoReadingDiaryDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(nextOpen) => !isSubmitting && onOpenChange(nextOpen)}
+      onOpenChange={onOpenChange}
     >
       <DialogContent className="max-w-lg">
         <DialogHeader>
@@ -227,6 +229,11 @@ export function CoReadingDiaryDialog({
             )}
           </div>
 
+          {isSubmitting && (
+            <p className="rounded-lg bg-muted p-3 text-muted-foreground text-sm">
+              正在后台写入，可以关掉这个窗口继续看书，写完会弹通知。
+            </p>
+          )}
           {feedback && (
             <p
               role="status"
@@ -246,9 +253,8 @@ export function CoReadingDiaryDialog({
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            disabled={isSubmitting}
           >
-            取消
+            {isSubmitting ? "后台继续写" : "取消"}
           </Button>
           <Button
             type="button"
