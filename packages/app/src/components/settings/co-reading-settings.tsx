@@ -1,6 +1,5 @@
 import { NovaCompanionModeControl } from "@/components/nova/nova-companion-mode-control";
 import { updateNovaExtras, useNovaExtras } from "@/components/nova/nova-extras";
-import { coReadingProfileAdvice } from "@/components/nova/nova-memory";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -38,18 +37,6 @@ type CheckState =
 export default function CoReadingSettings() {
   const { modelProviders } = useProviderStore();
   const bridgeProviders = modelProviders.filter((provider) => isVcpBridgeUrl(provider.baseUrl));
-  const bridgeModelIds = bridgeProviders.flatMap((provider) =>
-    (provider.models ?? []).filter((model) => model.active !== false).map((model) => model.id),
-  );
-  const heavyProfiles = [
-    ...new Set(
-      bridgeModelIds
-        .map((id) => coReadingProfileAdvice(id))
-        .filter((advice) => advice?.level === "warn")
-        .map((advice) => advice?.profile),
-    ),
-  ];
-  const hasLiteProfile = bridgeModelIds.some((id) => coReadingProfileAdvice(id)?.level === "ok");
   const [origin, setOrigin] = useState(() => toOrigin(bridgeProviders[0]?.baseUrl) ?? DEFAULT_BRIDGE_ORIGIN);
   const [check, setCheck] = useState<CheckState>({ status: "idle" });
   const [positionReset, setPositionReset] = useState(false);
@@ -117,18 +104,13 @@ export default function CoReadingSettings() {
 
         {bridgeProviders.length > 0 && (
           <div className="mb-3 rounded-md border bg-background/60 p-2.5 text-xs leading-relaxed">
-            <p className="font-medium">Profile 体检</p>
+            <p className="font-medium">Profile 自动处理</p>
             <p className="mt-1 text-muted-foreground">
-              自动共读推荐用 <code>coreading-lite/…</code>
-              ：只召回阅读日记，不进 OneRing，也不带写日记指南。
-              {hasLiteProfile ? "（已找到）" : "（还没在模型列表里找到，可以在提供商里添加。）"}
+              不用手写 Profile 前缀，程序会按用途自动加：自动共读用 <code>coreading-lite</code>
+              （只召回阅读日记，不进 OneRing），问答用 <code>reading</code>，记忆提取用{" "}
+              <code>memory-extract</code>，写日记直接用模型名。模型列表里放基础模型（如{" "}
+              <code>gemini-3.8-flash</code>）就行；以前带前缀的条目也照常能用。
             </p>
-            {heavyProfiles.length > 0 && (
-              <p className="mt-1 text-amber-700 dark:text-amber-300">
-                {heavyProfiles.map((profile) => `${profile}/…`).join("、")}{" "}
-                会接入 OneRing（Nova 的跨端对话账本只存 100 条）并带写日记指南：用来聊天没问题，但不建议用于自动共读。
-              </p>
-            )}
           </div>
         )}
 
@@ -172,8 +154,8 @@ export default function CoReadingSettings() {
         <ul className="list-disc space-y-1.5 pl-4 text-muted-foreground text-xs leading-relaxed">
           <li>每本书的共读模型在阅读页右侧「共读」面板里选；不单独选择时，跟随问答当前选中的模型。</li>
           <li>
-            模型 ID 写成 <code>Profile/模型</code>。自动共读推荐 <code>coreading-lite/gemini-3.8-flash-high</code>
-            ：只召回阅读相关记忆，速度更快。
+            选基础模型即可，Profile 前缀会自动加。带 <code>-high</code> 的是深度思考版：更细致，但每次要 1–3
+            分钟；自动边注默认用快速版（共读面板里的「快速模型」开关）。
           </li>
           <li>深度思考模型单次可能要 1–3 分钟；共读请求最长等 180 秒，超时后进度会保留，可以稍后重试。</li>
           <li>

@@ -173,7 +173,7 @@ export default function ReaderLayout() {
   }, [activeTabId, removeTab]);
 
   return (
-    <div className="flex h-screen flex-col bg-muted">
+    <div className="flex h-screen flex-col overflow-clip bg-muted">
       <div className="select-none border-neutral-200 dark:border-neutral-700 dark:bg-tab-background">
         <Tabs
           tabs={tabs}
@@ -199,7 +199,8 @@ export default function ReaderLayout() {
         />
       </div>
 
-      <main className="relative flex-1 overflow-hidden rounded-md">
+      {/* overflow-clip：内容区不许被程序滚动。平板上侧栏若比容器高，聚焦/scrollIntoView 会把整块内容顶上去，盖住各栏顶部按钮。 */}
+      <main className="relative min-h-0 flex-1 overflow-clip rounded-md">
         <div
           className="absolute inset-0"
           style={{
@@ -256,8 +257,8 @@ export default function ReaderLayout() {
                 <div
                   className={
                     swapSidebars
-                      ? "ml-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"
-                      : "mr-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"
+                      ? "ml-1 h-full overflow-hidden rounded-lg border bg-background shadow-sm"
+                      : "mr-1 h-full overflow-hidden rounded-lg border bg-background shadow-sm"
                   }
                 >
                   <NotepadContainer bookId={tab.bookId} />
@@ -308,8 +309,8 @@ export default function ReaderLayout() {
                 <div
                   className={
                     swapSidebars
-                      ? "mr-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"
-                      : "ml-1 h-[calc(100dvh-48px)] overflow-hidden rounded-lg border bg-background shadow-sm"
+                      ? "mr-1 h-full overflow-hidden rounded-lg border bg-background shadow-sm"
+                      : "ml-1 h-full overflow-hidden rounded-lg border bg-background shadow-sm"
                   }
                 >
                   <SideChat key={`chat-${tab.id}`} bookId={tab.bookId} />
@@ -321,7 +322,7 @@ export default function ReaderLayout() {
           return (
             <ReaderProvider store={store} key={tab.id}>
               <div
-                className="absolute inset-0 flex bg-background p-1"
+                className="absolute inset-0 flex overflow-clip bg-background p-1"
                 style={{
                   visibility: tab.id === activeTabId ? "visible" : "hidden",
                   zIndex: tab.id === activeTabId ? 1 : 0,

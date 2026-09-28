@@ -1,3 +1,5 @@
+import { estimateTokens } from "@/lib/co-reading-core";
+import { getCoReadingTrigger } from "@/lib/co-reading-trigger";
 import type {
   CoReadingBatch,
   CoReadingBatchDecision,
@@ -66,24 +68,25 @@ export async function requestCoReadingItem(
   if (batch.newBlocks.length === 0) {
     throw new Error("页面共读请求必须包含当前可见正文");
   }
-  const focusKeys = new Set(
-    batch.newBlocks.map((block) => block.focusKey ?? block.blockKey)
-  );
-  if (focusKeys.size !== 1 || focusKeys.has("")) {
-    throw new Error("页面共读请求只能包含一个可见焦点");
+  // 队列模式下一批可以跨越多个页面焦点（最多 12 段），持久化时再按焦点分组。
+  if (batch.newBlocks.some((block) => !(block.focusKey ?? block.blockKey))) {
+    throw new Error("共读请求包含没有页面焦点的正文块");
   }
   const pageTokens = batch.newBlocks.reduce(
-    (sum, block) => sum + Math.ceil(block.text.length / 2) + 12,
+    (sum, block) => sum + estimateTokens(block.text) + 12,
     0
   );
-  if (pageTokens > 5_000) {
+  if (pageTokens > 8_000) {
     throw new Error(
-      "当前可见页正文超过单次共读上下文预算，请调整字号或页面布局后重试"
+      "这一段正文太长，超过了单次共读的上下文预算，已跳过"
     );
   }
-  const model = resolveCoReadingAgentModel(settings);
+  // 自动边注最在意速度：Bridge 上默认去掉 -high（可在共读面板关掉「快速模型」）。
+  const model = resolveCoReadingAgentModel(settings, {
+    fast: getCoReadingTrigger().fast,
+  });
   const prompt = [
-    "CURRENT_VISIBLE_FOCUS（当前完整可见页/双页；这些块合在一起是一个连续阅读单元）：",
+    "CURRENT_VISIBLE_FOCUS（读者刚刚读完的连续段落，可能跨越一两屏；这些块合在一起是一个连续阅读单元）：",
     serializeBlocks(batch.newBlocks),
     "RECENT_READ_BLOCKS（上一阅读焦点，仅供脉络，不可作为批注落点）：",
     serializeBlocks(batch.recentBlocks.slice(0, 8)),

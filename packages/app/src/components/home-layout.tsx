@@ -60,14 +60,14 @@ const HomeLayout = () => {
   return (
     <div
       className={clsx(
-        "flex h-dvh w-full rounded-xl bg-transparent p-1 py-0 transition-all duration-200",
+        "flex h-full w-full rounded-xl bg-transparent p-1 py-0 transition-all duration-200",
         isDragOver && "bg-neutral-50 dark:bg-neutral-900/20",
       )}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="flex h-[calc(100vh-40px)] w-full rounded-xl border bg-background shadow-around">
+      <div className="flex h-full w-full rounded-xl border bg-background shadow-around">
         {isDragOver && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-50/80 backdrop-blur-sm dark:bg-neutral-900/40">
             <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-neutral-400 border-dashed bg-white/90 px-30 py-16 shadow-lg dark:border-neutral-500 dark:bg-neutral-800/90">

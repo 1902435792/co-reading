@@ -51,7 +51,8 @@ export function useModelSelector(defaultProviderId?: string, defaultModelId?: st
     if (!selectedModel) return null;
 
     try {
-      return createModelInstance(selectedModel.providerId, selectedModel.modelId);
+      // VCP Bridge：问答自动走 reading/ Profile，用户只需要选基础模型。
+      return createModelInstance(selectedModel.providerId, selectedModel.modelId, { purpose: "reading" });
     } catch (error) {
       console.error("Failed to create model instance:", error);
       return null;

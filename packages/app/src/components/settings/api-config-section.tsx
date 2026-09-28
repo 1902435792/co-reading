@@ -85,9 +85,8 @@ export default function ApiConfigSection({ provider, onFieldChange }: ApiConfigS
           placeholder="https://api.example.com/v1"
         />
         <p className="text-muted-foreground text-xs leading-relaxed">
-          VCP Bridge：基础 URL 填 <code>http://127.0.0.1:3100/v1</code>，模型 ID 使用
-          <code className="mx-1">profile/model</code>
-          形式（自动共读推荐 <code>coreading-lite/gemini-3.8-flash-high</code>），不要把 Profile 写入基础 URL。
+          VCP Bridge：基础 URL 填 <code>http://127.0.0.1:3100/v1</code>，模型 ID 填基础模型（如{" "}
+          <code>gemini-3.8-flash</code>）即可：共读、问答、记忆提取会自动加上各自的 Profile 前缀，不要把 Profile 写入基础 URL。
           可点击“获取模型”检查连接：Bridge 会返回上游 VCP 的真实模型列表。
         </p>
       </div>

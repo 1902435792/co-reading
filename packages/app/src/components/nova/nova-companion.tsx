@@ -1,4 +1,5 @@
 import { getAnnotationSourceTarget } from "@/components/side-chat/co-reading-backlink";
+import { isJevPickNote } from "@/lib/co-reading-trigger";
 import { EMPTY_BOOK_NOTES, selectBookNotes } from "@/components/side-chat/co-reading-panel-state";
 import {
   ContextMenu,
@@ -29,7 +30,6 @@ import {
 } from "@/services/jev-service";
 import { getMemories } from "@/services/memory-service";
 import { useLibraryStore } from "@/store/library-store";
-import { useProviderStore } from "@/store/provider-store";
 import { generateText } from "ai";
 import { NOVA_LATE_NIGHT_IMAGE, NOVA_STATIC_AVATAR, pickNovaImage, pickReactionImage } from "./nova-assets";
 import { type ChapterCard, buildChapterCardPrompt, parseChapterCardJson, shouldOfferChapterCard } from "./chapter-card";
@@ -60,7 +60,6 @@ import {
   rememberCrossBookShown,
 } from "./nova-crossbook";
 import { checkDiaryProposal, openCoReadingDiary } from "./nova-diary";
-import { coReadingProfileAdvice } from "./nova-memory";
 import { activeMsFromStats, formatActiveDuration, isLateNight, progressPercent } from "./nova-moments";
 
 interface NovaBubble {
@@ -108,7 +107,8 @@ function readJson<T>(key: string, fallback: T): T {
 }
 
 function isAiAnnotation(note: BookNote) {
-  return note.author === "ai" && !note.deletedAt && !note.sourceNoteId;
+  // JEV 的波浪线选句不是 Nova 写的边注。
+  return note.author === "ai" && !note.deletedAt && !note.sourceNoteId && !isJevPickNote(note);
 }
 
 /** 打字机效果：减少动态效果时直接显示全文。 */
@@ -608,27 +608,7 @@ function NovaCompanionInner({
     });
   }, [pageKey]);
 
-  // ---------- Profile 体检：自动共读用了带 OneRing 的 Profile 时提醒一次 ----------
-  const coReadingModelId = snapshot.settings.modelId;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 只在共读模型变化时检查
-  useEffect(() => {
-    const modelId = coReadingModelId || useProviderStore.getState().selectedModel?.modelId;
-    const advice = coReadingProfileAdvice(modelId);
-    if (advice?.level !== "warn") return;
-    const key = `deepreader:nova-profile-advice:${advice.profile}`;
-    if (window.localStorage.getItem(key)) return;
-    const timer = window.setTimeout(() => {
-      window.localStorage.setItem(key, String(Date.now()));
-      say({
-        kind: "info",
-        title: "Nova · 小建议",
-        text: advice.message,
-        ttl: 30_000,
-        actions: [{ label: "知道了", onClick: () => setBubble(null) }],
-      });
-    }, 12_000);
-    return () => window.clearTimeout(timer);
-  }, [coReadingModelId]);
+  // Profile 前缀现在按用途自动处理（共读固定 coreading-lite），不再需要「Profile 体检」提醒。
 
   // ---------- 章末卡片 ----------
   const cardBusyRef = useRef(false);

@@ -68,7 +68,8 @@ export async function maybeExtractMemories(
   try {
     const model = createModelInstance(
       memoryExtractionModel.providerId,
-      memoryExtractionModel.modelId
+      memoryExtractionModel.modelId,
+      { purpose: "memory" }
     );
 
     const result = await generateText({

@@ -329,3 +329,99 @@ export function pickCommentReviewMode(
   if (choiceConfidence(answer) < minConfidence) return null;
   return choice;
 }
+
+// ---------- JEV 波浪线选句（和 Nova 边注互相独立，可以重叠） ----------
+
+export interface JevSentenceCandidate {
+  key: string;
+  blockKey: string;
+  text: string;
+}
+
+export interface JevSentencePick extends JevSentenceCandidate {
+  confidence: number;
+}
+
+const SENTENCE_MIN_CHARS = 8;
+const SENTENCE_MAX_CHARS = 120;
+export const SENTENCE_PICK_MAX_OPTIONS = 12;
+
+/** 把这一批正文切成候选句子；尽量每个段落都分到名额，最多 12 句。 */
+export function splitCandidateSentences(
+  blocks: readonly { blockKey: string; text: string }[],
+  maxOptions = SENTENCE_PICK_MAX_OPTIONS,
+): JevSentenceCandidate[] {
+  const perBlock = blocks.map((block) =>
+    block.text
+      .split(/(?<=[。！？!?；;…])\s*|\n+/u)
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => {
+        const length = [...sentence].length;
+        return length >= SENTENCE_MIN_CHARS && length <= SENTENCE_MAX_CHARS;
+      })
+      .map((text) => ({ blockKey: block.blockKey, text })),
+  );
+  const picked: { blockKey: string; text: string }[] = [];
+  const seen = new Set<string>();
+  // 轮流从每个段落取一句，避免长段落把名额占满。
+  for (let round = 0; picked.length < maxOptions; round++) {
+    let any = false;
+    for (const sentences of perBlock) {
+      const sentence = sentences[round];
+      if (!sentence) continue;
+      any = true;
+      if (seen.has(sentence.text)) continue;
+      seen.add(sentence.text);
+      picked.push(sentence);
+      if (picked.length >= maxOptions) break;
+    }
+    if (!any) break;
+  }
+  return picked.map((sentence, index) => ({ key: `s${index + 1}`, ...sentence }));
+}
+
+export function buildSentencePickQuestion(candidates: readonly JevSentenceCandidate[]): JevQuestion {
+  const criteria: Record<string, string> = {};
+  for (const candidate of candidates) criteria[candidate.key] = candidate.text;
+  criteria.none = "都很普通，没有特别值得划出来的句子";
+  return {
+    type: "choice",
+    instructions:
+      "如果一位认真的读者要在这段文字里用波浪线划出最值得回味的一句（精彩的表达、关键论点、伏笔或情感高点），会是哪一句？",
+    criteria,
+  };
+}
+
+const PICK_TOP_MIN = 0.25;
+const PICK_SECOND_MIN = 0.2;
+
+/** 取 JEV 最看好的一两句；选了 none 或把握太低就不划。 */
+export function pickSentences(
+  answer: JevAnswer | undefined,
+  candidates: readonly JevSentenceCandidate[],
+  maxPicks = 2,
+): JevSentencePick[] {
+  if (!answer?.choice || candidates.length === 0) return [];
+  const byKey = new Map(candidates.map((candidate) => [candidate.key, candidate]));
+  const probabilities = answer.probabilities;
+  if (!probabilities || Object.keys(probabilities).length === 0) {
+    const only = byKey.get(answer.choice);
+    return only ? [{ ...only, confidence: 1 }] : [];
+  }
+  const ranked = Object.entries(probabilities)
+    .filter(([key, value]) => byKey.has(key) && Number.isFinite(value))
+    .sort((a, b) => b[1] - a[1]);
+  const none = probabilities.none ?? 0;
+  const result: JevSentencePick[] = [];
+  for (const [key, confidence] of ranked) {
+    if (result.length >= maxPicks) break;
+    const top = result[0]?.confidence;
+    if (top === undefined) {
+      if (confidence < PICK_TOP_MIN || confidence < none) break;
+    } else if (confidence < PICK_SECOND_MIN || confidence < top / 2) {
+      break;
+    }
+    result.push({ ...byKey.get(key)!, confidence });
+  }
+  return result;
+}

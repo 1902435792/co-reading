@@ -41,6 +41,7 @@ function createRequestSignal(timeoutMs: number): AbortSignal {
 
 export function resolveCoReadingAgentModel(
   settings?: Pick<CoReadingSettings, "modelProviderId" | "modelId"> | null,
+  options: { fast?: boolean } = {},
 ) {
   const state = useProviderStore.getState();
   const selectedModel = resolveCoReadingModel(
@@ -49,7 +50,11 @@ export function resolveCoReadingAgentModel(
     state.modelProviders,
   );
   if (!selectedModel) throw new Error("请先配置并选择可用模型");
-  return createModelInstance(selectedModel.providerId, selectedModel.modelId);
+  // VCP Bridge：自动换成 coreading-lite/ 前缀，用户只需要选基础模型。
+  return createModelInstance(selectedModel.providerId, selectedModel.modelId, {
+    purpose: "coreading",
+    fast: options.fast,
+  });
 }
 
 export async function requestCoReadingStructuredObject<T>(

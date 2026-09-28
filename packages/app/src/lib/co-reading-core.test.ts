@@ -44,8 +44,8 @@ test("token estimation is conservative for CJK and Latin text", () => {
   assert.ok(estimateTokens("four latin words here") >= 5);
 });
 
-test("batch includes only whole unlocked blocks and stays within 5000 tokens", () => {
-  const queued = Array.from({ length: 5 }, (_, index) =>
+test("batch includes only whole unlocked blocks and stays within 9000 tokens", () => {
+  const queued = Array.from({ length: 8 }, (_, index) =>
     makeBlock(`new-${index}`, "新内容".repeat(300))
   );
   const recent = Array.from({ length: 4 }, (_, index) =>
@@ -61,7 +61,7 @@ test("batch includes only whole unlocked blocks and stays within 5000 tokens", (
 
   assert.ok(batch.newBlocks.length > 0);
   assert.ok(batch.newBlocks.length < queued.length);
-  assert.ok(batch.estimatedInputTokens <= 5_000);
+  assert.ok(batch.estimatedInputTokens <= 9_000);
   assert.ok(batch.newBlocks.every((block) => block.status === "queued"));
   assert.ok(
     batch.recentBlocks.every(
@@ -77,19 +77,19 @@ test("batch includes only whole unlocked blocks and stays within 5000 tokens", (
   );
 });
 
-test("batch caps failure blast radius at six new blocks", () => {
+test("batch caps failure blast radius at twelve new blocks", () => {
   const batch = buildCoReadingBatch({
-    queued: Array.from({ length: 12 }, (_, index) =>
+    queued: Array.from({ length: 20 }, (_, index) =>
       makeBlock(`small-${index}`, `第 ${index} 段短文本`)
     ),
     recent: [],
     rollingSummary: "",
     annotations: [],
   });
-  assert.equal(batch.newBlocks.length, 6);
+  assert.equal(batch.newBlocks.length, 12);
   assert.deepEqual(
     batch.newBlocks.map((block) => block.blockKey),
-    ["small-0", "small-1", "small-2", "small-3", "small-4", "small-5"]
+    Array.from({ length: 12 }, (_, index) => `small-${index}`)
   );
 });
 
@@ -426,4 +426,31 @@ test("annotation quote must be an exact substring of a claimed block", () => {
     comment: valid.comment,
     summary: "summary",
   });
+});
+
+test("validateCoReadingItemResult queue mode allows multiple focuses and drops bad notes", () => {
+  const first = { ...makeBlock("one", "第一屏的准确引文在这里"), focusKey: "focus-a" };
+  const second = { ...makeBlock("two", "第二屏的另一句原文"), focusKey: "focus-b" };
+  assert.throws(() =>
+    validateCoReadingItemResult({ summary: "", annotations: [] }, [first, second])
+  );
+  const result = validateCoReadingItemResult(
+    {
+      summary: "继续",
+      annotations: [
+        { blockKey: "one", quote: "准确引文", comment: "第一条" },
+        { blockKey: "two", quote: "改写过的引文", comment: "无效" },
+        { blockKey: "two", quote: "另一句原文", comment: "第二条" },
+      ],
+    },
+    [first, second],
+    { multiFocus: true, dropInvalid: true }
+  );
+  assert.deepEqual(
+    result.annotations.map((item) => [item.block.blockKey, item.quote]),
+    [
+      ["one", "准确引文"],
+      ["two", "另一句原文"],
+    ]
+  );
 });

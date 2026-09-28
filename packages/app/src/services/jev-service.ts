@@ -8,6 +8,7 @@ import {
   type JevAnswer,
   type JevPageGate,
   type JevQuestion,
+  type JevSentencePick,
   type JevSettings,
   NOTE_WORTH_QUESTIONS,
   NOVA_REACTION_QUESTIONS,
@@ -18,11 +19,14 @@ import {
   buildJevRequest,
   buildPageState,
   buildReactionState,
+  buildSentencePickQuestion,
   decidePageGate,
   emotionFromAnswers,
   extractJevAnswers,
   isPassageHard,
   jevEndpointNeedsUrl,
+  pickSentences,
+  splitCandidateSentences,
   normalizeJevSettings,
   noteWorthOf,
   pickNovaReaction,
@@ -204,6 +208,47 @@ export async function evaluateCoReadingPageWithJev(
   } catch {
     if (!signal?.aborted) bumpJevStats((stats) => ({ ...stats, failed: stats.failed + 1 }));
     return null;
+  }
+}
+
+export interface JevBatchVerdict {
+  /** null 表示没做预筛（没开、没配置或失败），照常请求 Nova。 */
+  gate: JevPageGate | null;
+  /** JEV 自己挑的波浪线句子，和 Nova 的边注互不影响。 */
+  picks: JevSentencePick[];
+}
+
+/**
+ * 共读一批正文的 JEV 判断：「值不值得批注」和「波浪线选句」合在同一个请求里。
+ * 未配置 JEV 或请求失败时返回 { gate: null, picks: [] }，不影响 Nova。
+ */
+export async function evaluateCoReadingBatchWithJev(
+  blocks: readonly { blockKey: string; text: string; sectionLabel?: string }[],
+  options: { gate: boolean; wavy: boolean },
+  signal?: AbortSignal,
+): Promise<JevBatchVerdict> {
+  const settings = getJevSettings();
+  const empty: JevBatchVerdict = { gate: null, picks: [] };
+  if ((!options.gate && !options.wavy) || !isJevConfigured(settings)) return empty;
+  const candidates = options.wavy ? splitCandidateSentences(blocks) : [];
+  const questions: Record<string, JevQuestion> = options.gate ? { ...PAGE_GATE_QUESTIONS } : {};
+  if (candidates.length > 0) questions.wavy_pick = buildSentencePickQuestion(candidates);
+  if (Object.keys(questions).length === 0) return empty;
+  try {
+    const answers = await requestJevDecisions(buildPageState(blocks), questions, { settings, signal });
+    const gate = options.gate ? decidePageGate(answers, settings.skipLevel) : null;
+    if (gate) {
+      bumpJevStats((stats) => ({
+        ...stats,
+        checked: stats.checked + 1,
+        skipped: stats.skipped + (gate.skip ? 1 : 0),
+        lastReason: gate.skip ? gate.reason : stats.lastReason,
+      }));
+    }
+    return { gate, picks: pickSentences(answers.wavy_pick, candidates) };
+  } catch {
+    if (!signal?.aborted) bumpJevStats((stats) => ({ ...stats, failed: stats.failed + 1 }));
+    return empty;
   }
 }
 

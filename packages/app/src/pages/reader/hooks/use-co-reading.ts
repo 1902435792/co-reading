@@ -1,4 +1,5 @@
 import {
+  CO_READING_BATCH_MAX_BLOCKS,
   buildCoReadingBatch,
   mergeTrackedCoReadingState,
   sanitizeCoReadingError,
@@ -17,13 +18,24 @@ import {
   isClaimedFocusCommitted,
   isCoReadingFocusCancellation,
   isRangeTakeoverCancellation,
-  sameVisibleFocus,
-  selectVisibleQueuedFocus,
   shouldDrainCoReadingQueue,
   type VisibleQueuedFocus,
 } from "@/lib/co-reading-run-state";
+import {
+  getCoReadingTrigger,
+  groupByFocusKey,
+  isJevPickNote,
+  pauseMsFor,
+  requiredDwellMs,
+  shouldDispatchQueue,
+} from "@/lib/co-reading-trigger";
+import { createBookNote } from "@/services/book-note-service";
 import { requestCoReadingItem } from "@/services/co-reading-ai-service";
-import { evaluateCoReadingPageWithJev } from "@/services/jev-service";
+import {
+  evaluateCoReadingBatchWithJev,
+  getJevSettings,
+} from "@/services/jev-service";
+import type { JevSentencePick } from "@/services/jev-rules";
 import {
   claimCoReadingBlocks,
   completeCoReadingBatch,
@@ -56,7 +68,21 @@ interface TrackedBlock extends CoReadingBlockUpsert {
 interface OrdinaryCoReadingRun {
   generation: number;
   controller: AbortController;
-  focus: VisibleQueuedFocus;
+  /** 本批认领的正文块（可以跨多个页面焦点）。 */
+  blockKeys: string[];
+}
+
+/** 失败后暂停自动发送多久（期间用户可以手动重试）。 */
+const FAILURE_BACKOFF_MS = 30_000;
+
+/** 失败后的退避期内不自动发送；过了退避期自动再试。 */
+function isRunBlocked(
+  runBlocked: { current: boolean },
+  blockedAt: { current: number }
+): boolean {
+  return (
+    runBlocked.current && performance.now() - blockedAt.current < FAILURE_BACKOFF_MS
+  );
 }
 
 export function useCoReading(bookId: string, isVisible: boolean): void {
@@ -85,6 +111,9 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
   const workerGenerationRef = useRef(0);
   const activeRunRef = useRef<OrdinaryCoReadingRun | null>(null);
   const blockedFocusKeyRef = useRef<string | null>(null);
+  const blockedAtRef = useRef(0);
+  /** 最近一次翻页/滑动（可见段落集合变化）的时间，用来判断「停下来了」。 */
+  const lastMoveAtRef = useRef(performance.now());
   const mountedRef = useRef(true);
 
   const refreshSnapshot = useCallback(async () => {
@@ -120,59 +149,56 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
       focusKey: visibleFocus?.focusKey ?? null,
       historicalQueuedBlockCount,
       visibleTerminalBlockCount,
-      runBlocked:
-        runBlockedRef.current &&
-        blockedFocusKeyRef.current === visibleFocus?.focusKey,
+      runBlocked: isRunBlocked(runBlockedRef, blockedAtRef),
     });
   }, [store]);
 
-  const getVisibleQueuedBlocks = useCallback(
+  /** 整本书里所有排队中的段落，按「读完」的先后顺序。翻走/划走不会丢。 */
+  const getQueuedBlocks = useCallback(
     (nextSnapshot = store.getState().coReadingSnapshot): CoReadingBlock[] => {
       if (!nextSnapshot) return [];
-      const visibleFocus = visibleFocusRef.current;
-      const pendingFocus = identifyVisibleFocus(visibleBlocksRef.current);
-      if (
-        !visibleFocus ||
-        !pendingFocus ||
-        pendingFocus.focusKey !== visibleFocus.focusKey
-      )
-        return [];
-      const blocksByKey = new Map(
-        nextSnapshot.blocks.map((block) => [block.blockKey, block])
-      );
-      const matched = pendingFocus.blockKeys
-        .map((blockKey) => blocksByKey.get(blockKey))
-        .filter((block): block is CoReadingBlock => Boolean(block));
-      const queuedFocus = selectVisibleQueuedFocus(matched);
-      return sameVisibleFocus(pendingFocus, queuedFocus) ? matched : [];
+      return nextSnapshot.blocks
+        .filter((block) => block.status === "queued")
+        .map((block, index) => ({ block, index }))
+        .sort(
+          (a, b) =>
+            (a.block.unlockedAt ?? 0) - (b.block.unlockedAt ?? 0) ||
+            a.index - b.index
+        )
+        .map(({ block }) => block);
     },
     [store]
   );
 
-  const cancelRunOutsideFocus = useCallback(
-    (nextFocus: VisibleQueuedFocus | null) => {
-      const active = activeRunRef.current;
-      if (
-        !active ||
-        (nextFocus?.focusKey === active.focus.focusKey &&
-          active.focus.blockKeys.every((key) =>
-            nextFocus.blockKeys.includes(key)
-          ))
-      )
-        return;
-      const reason = new CoReadingFocusCancelledError();
-      active.controller.abort(reason);
-      // Release immediately as well as in the worker catch. This closes the small window
-      // between navigation and the aborted model promise unwinding; the Rust API is idempotent.
-      void releaseCoReadingFocus({
-        bookId,
-        blockKeys: active.focus.blockKeys,
-      }).catch(() => {
-        // The worker performs the authoritative release/commit check after it unwinds.
-      });
+  /** 按焦点分组释放（后端要求整焦点释放；释放不了的 5 分钟后会自动回到队列）。 */
+  const releaseBlocks = useCallback(
+    async (blocks: readonly CoReadingBlock[]) => {
+      const groups = groupByFocusKey(
+        blocks.map((block) => ({
+          blockKey: block.blockKey,
+          focusKey: block.focusKey ?? block.blockKey,
+        }))
+      );
+      for (const group of groups) {
+        try {
+          await releaseCoReadingFocus({
+            bookId,
+            blockKeys: group.map((block) => block.blockKey),
+          });
+        } catch {
+          // 部分焦点无法释放：交给快照的超时恢复。
+        }
+      }
     },
     [bookId]
   );
+
+  /** 只在共读被暂停/关闭时取消；翻页、滑动不再打断正在进行的请求。 */
+  const cancelActiveRun = useCallback((reason = "共读已暂停") => {
+    const active = activeRunRef.current;
+    if (!active || active.controller.signal.aborted) return;
+    active.controller.abort(new CoReadingFocusCancelledError(reason));
+  }, []);
 
   const flush = useCallback(async () => {
     const blocks = Array.from(dirtyRef.current)
@@ -201,12 +227,9 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
     }
   }, [bookId, store, updateRuntime]);
 
-  const prepareAiAnnotation = useCallback(
-    async (
-      block: CoReadingBlock,
-      quote: string,
-      comment: string
-    ): Promise<CoReadingNoteCreateData> => {
+  /** 在已解锁原文里精确定位引文，得到 CFI 和上下文（未渲染的章节会临时载入）。 */
+  const resolveQuoteAnchor = useCallback(
+    async (block: CoReadingBlock, quote: string) => {
       if (!view) throw new Error("阅读视图尚未就绪");
       const resolved = view.resolveCFI(block.cfi);
       const content = view.renderer
@@ -214,14 +237,26 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
         .find((item) => item.index === resolved.index);
       const section = view.book.sections?.[resolved.index];
       const doc = content?.doc ?? (await section?.createDocument?.());
-      if (!doc) throw new Error("无法载入批注对应的已解锁章节");
-
-      const baseRange = resolved.anchor(doc);
-      const quoteRange = locateExactQuoteRange(baseRange, quote);
+      if (!doc) throw new Error("无法载入对应的已解锁章节");
+      const quoteRange = locateExactQuoteRange(resolved.anchor(doc), quote);
       if (!quoteRange || quoteRange.toString() !== quote) {
-        throw new Error("无法在已解锁原文中精确定位模型引文");
+        throw new Error("无法在已解锁原文中精确定位引文");
       }
-      const cfi = view.getCFI(resolved.index, quoteRange);
+      return {
+        cfi: view.getCFI(resolved.index, quoteRange),
+        context: contextAroundRange(quoteRange),
+      };
+    },
+    [view]
+  );
+
+  const prepareAiAnnotation = useCallback(
+    async (
+      block: CoReadingBlock,
+      quote: string,
+      comment: string
+    ): Promise<CoReadingNoteCreateData> => {
+      const anchor = await resolveQuoteAnchor(block, quote);
       const id = md5(
         `${bookId}:${block.focusKey ?? block.blockKey}:${
           block.blockKey
@@ -231,15 +266,15 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
         id,
         blockKey: block.blockKey,
         type: "annotation",
-        cfi,
+        cfi: anchor.cfi,
         text: quote,
         style: "underline",
         color: "blue",
         note: comment,
-        context: contextAroundRange(quoteRange),
+        context: anchor.context,
       };
     },
-    [bookId, view]
+    [bookId, resolveQuoteAnchor]
   );
 
   const failClaimedBlocks = useCallback(
@@ -268,28 +303,111 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
     [bookId, store]
   );
 
+  /** 把 JEV 选中的句子划上紫色波浪线（和 Nova 边注互相独立，可以重叠）。失败不影响共读。 */
+  const addJevWavyNotes = useCallback(
+    async (picks: readonly JevSentencePick[], blocks: readonly CoReadingBlock[]) => {
+      if (picks.length === 0) return;
+      const existing = store.getState().config?.booknotes ?? [];
+      const created = [];
+      for (const pick of picks) {
+        const block = blocks.find((item) => item.blockKey === pick.blockKey);
+        if (!block) continue;
+        if (
+          existing.some(
+            (note) =>
+              isJevPickNote(note) && !note.deletedAt && note.text === pick.text
+          )
+        )
+          continue;
+        try {
+          const anchor = await resolveQuoteAnchor(block, pick.text);
+          created.push(
+            await createBookNote({
+              bookId,
+              type: "annotation",
+              cfi: anchor.cfi,
+              style: "squiggly",
+              color: "violet",
+              author: "ai",
+              text: pick.text,
+              note: `JEV 觉得这句值得回味（把握 ${Math.round(
+                pick.confidence * 100
+              )}%）`,
+              context: anchor.context,
+            })
+          );
+        } catch {
+          // 定位不到就不划。
+        }
+      }
+      if (created.length === 0) return;
+      const updatedConfig = store
+        .getState()
+        .updateBooknotes([
+          ...(store.getState().config?.booknotes ?? []),
+          ...created,
+        ]);
+      for (const note of created) {
+        try {
+          view?.addAnnotation(note);
+        } catch {
+          // 所在章节没渲染时，下次渲染会自动画上。
+        }
+      }
+      if (updatedConfig) await store.getState().saveConfig(updatedConfig);
+    },
+    [bookId, resolveQuoteAnchor, store, view]
+  );
+
   const drainQueue = useCallback(async () => {
     const currentSnapshot = store.getState().coReadingSnapshot;
     if (!currentSnapshot) return;
-    const queued = getVisibleQueuedBlocks(currentSnapshot);
-    const focus = selectVisibleQueuedFocus(queued);
-    const currentFocusBlocked =
-      runBlockedRef.current && blockedFocusKeyRef.current === focus?.focusKey;
+    const queued = getQueuedBlocks(currentSnapshot);
     if (
-      !focus ||
       !shouldDrainCoReadingQueue({
         status: currentSnapshot.settings.status,
         queuedCount: queued.length,
         modelReady: Boolean(coReadingModel),
-        runBlocked: currentFocusBlocked,
+        runBlocked: isRunBlocked(runBlockedRef, blockedAtRef),
         processing: processingRef.current,
       })
     )
       return;
+    if (runBlockedRef.current) {
+      // 退避时间已过，自动再试一次。
+      runBlockedRef.current = false;
+      blockedFocusKeyRef.current = null;
+    }
+
+    const recent = currentSnapshot.blocks
+      .filter(
+        (block) => block.status === "silent" || block.status === "annotated"
+      )
+      .sort((a, b) => (b.processedAt ?? 0) - (a.processedAt ?? 0));
+    const aiNotes = (store.getState().config?.booknotes ?? [])
+      .filter(
+        (note) =>
+          note.type === "annotation" &&
+          note.author === "ai" &&
+          !isJevPickNote(note)
+      )
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((note) => `“${note.text ?? ""}” ${note.note}`);
+    // 队列模式：按阅读顺序取一批（最多 12 段 / 字数预算内），可以跨越多个页面。
+    const batch = buildCoReadingBatch({
+      queued,
+      recent,
+      rollingSummary: currentSnapshot.settings.rollingSummary,
+      annotations: aiNotes,
+    });
+    // 单独一段就超出预算时也发出去（请求会报「太长已跳过」并标记失败），避免它永远卡住队列。
+    if (batch.newBlocks.length === 0) batch.newBlocks = queued.slice(0, 1);
+    if (batch.newBlocks.length === 0) return;
+    const blockKeys = batch.newBlocks.map((block) => block.blockKey);
 
     const generation = ++workerGenerationRef.current;
     const controller = new AbortController();
-    activeRunRef.current = { generation, controller, focus };
+    activeRunRef.current = { generation, controller, blockKeys };
     processingRef.current = true;
 
     const ownsRun = () => {
@@ -300,15 +418,8 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
         active.controller === controller
       );
     };
-    const assertCurrentFocus = () => {
-      if (
-        !ownsRun() ||
-        controller.signal.aborted ||
-        visibleFocusRef.current?.focusKey !== focus.focusKey ||
-        !focus.blockKeys.every((key) =>
-          visibleFocusRef.current?.blockKeys.includes(key)
-        )
-      ) {
+    const assertRunning = () => {
+      if (!ownsRun() || controller.signal.aborted) {
         throw new CoReadingFocusCancelledError();
       }
     };
@@ -320,51 +431,43 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
       error: null,
     });
     let claimed: CoReadingBlock[] = [];
+    const persistedKeys = new Set<string>();
+    const unpersisted = () =>
+      claimed.filter((block) => !persistedKeys.has(block.blockKey));
     try {
-      assertCurrentFocus();
-      const recent = currentSnapshot.blocks
-        .filter(
-          (block) => block.status === "silent" || block.status === "annotated"
-        )
-        .sort((a, b) => (b.processedAt ?? 0) - (a.processedAt ?? 0));
-      const aiNotes = (store.getState().config?.booknotes ?? [])
-        .filter((note) => note.type === "annotation" && note.author === "ai")
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .map((note) => `“${note.text ?? ""}” ${note.note}`);
-      const batch = buildCoReadingBatch({
-        queued,
-        recent,
-        rollingSummary: currentSnapshot.settings.rollingSummary,
-        annotations: aiNotes,
-      });
-      // One complete visible page/spread remains the indivisible request and failure unit.
-      batch.newBlocks = queued;
-      if (batch.newBlocks.length === 0)
-        throw new Error("当前可见页面没有待处理正文");
-
-      claimed = await claimCoReadingBlocks(bookId, focus.blockKeys);
+      try {
+        claimed = await claimCoReadingBlocks(bookId, blockKeys);
+      } catch {
+        // 快照过期（有段落已被处理或不再排队）：刷新后下一轮再取。
+        await refreshSnapshot();
+        return;
+      }
       if (claimed.length === 0) return;
-      assertCurrentFocus();
+      assertRunning();
       store.getState().setCoReadingRuntime({
         processingBlockCount: claimed.length,
-        focusKey: focus.focusKey,
       });
 
       try {
-        // 可选的 Jev 预筛：目录、版权页等不值得批注的页直接记为“已静默读完”，不再等待共读 Agent。
-        // 未开启、未配置或请求失败时返回 null，照常走原流程。
-        const gate = await evaluateCoReadingPageWithJev(
+        // JEV：「值不值得批注」（智能判断开启或 JEV 预筛开启时）和「波浪线选句」合在一个请求里。
+        // 未配置 JEV 或请求失败时 gate 为 null、picks 为空，照常请求 Nova。
+        const trigger = getCoReadingTrigger();
+        const verdict = await evaluateCoReadingBatchWithJev(
           claimed,
+          {
+            gate: trigger.smart || getJevSettings().prefilter,
+            wavy: trigger.wavy,
+          },
           controller.signal
         );
-        assertCurrentFocus();
+        assertRunning();
         let validated: {
           summary?: string;
           annotations: ReturnType<
             typeof validateCoReadingItemResult
           >["annotations"];
         };
-        if (gate?.skip) {
+        if (verdict.gate?.skip) {
           validated = { annotations: [] };
         } else {
           const decision = await requestCoReadingItem(
@@ -372,44 +475,67 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
             currentSnapshot.settings,
             controller.signal
           );
-          assertCurrentFocus();
-          validated = validateCoReadingItemResult(decision, claimed);
+          assertRunning();
+          validated = validateCoReadingItemResult(decision, claimed, {
+            multiFocus: true,
+            dropInvalid: true,
+          });
         }
-        const preparedNotes = await Promise.all(
-          validated.annotations.map((annotation) =>
-            prepareAiAnnotation(
-              annotation.block,
-              annotation.quote,
-              annotation.comment
+        const preparedNotes = (
+          await Promise.all(
+            validated.annotations.map((annotation) =>
+              prepareAiAnnotation(
+                annotation.block,
+                annotation.quote,
+                annotation.comment
+              ).catch(() => null)
             )
           )
+        ).filter((note): note is CoReadingNoteCreateData => Boolean(note));
+        assertRunning();
+
+        // 后端一次只能持久化同一个页面焦点：按焦点分组依次写入，摘要跟最后一组一起写。
+        const groups = groupByFocusKey(
+          claimed.map((block) => ({
+            block,
+            focusKey: block.focusKey ?? block.blockKey,
+          }))
         );
-        assertCurrentFocus();
-        const persisted = await persistCoReadingFocus({
-          bookId,
-          blockKeys: claimed.map((block) => block.blockKey),
-          notes: preparedNotes,
-          rollingSummary: validated.summary,
-        });
-        if (persisted.notes.length > 0) {
+        const savedNotes: Awaited<
+          ReturnType<typeof persistCoReadingFocus>
+        >["notes"] = [];
+        for (const [index, group] of groups.entries()) {
+          const keys = group.map((item) => item.block.blockKey);
+          const keySet = new Set(keys);
+          const persisted = await persistCoReadingFocus({
+            bookId,
+            blockKeys: keys,
+            notes: preparedNotes.filter((note) => keySet.has(note.blockKey)),
+            rollingSummary:
+              index === groups.length - 1 ? validated.summary : undefined,
+          });
+          for (const key of keys) persistedKeys.add(key);
+          savedNotes.push(...persisted.notes);
+        }
+
+        if (savedNotes.length > 0) {
           try {
             const existingNotes = store.getState().config?.booknotes ?? [];
-            const persistedIds = new Set(
-              persisted.notes.map((note) => note.id)
-            );
+            const persistedIds = new Set(savedNotes.map((note) => note.id));
             const updatedConfig = store
               .getState()
               .updateBooknotes([
                 ...existingNotes.filter((note) => !persistedIds.has(note.id)),
-                ...persisted.notes,
+                ...savedNotes,
               ]);
-            if (sameVisibleFocus(focus, visibleFocusRef.current)) {
-              for (const note of persisted.notes) view?.addAnnotation(note);
+            for (const note of savedNotes) {
+              try {
+                view?.addAnnotation(note);
+              } catch {
+                // 所在章节没渲染时，下次渲染会自动画上。
+              }
             }
             if (updatedConfig) await store.getState().saveConfig(updatedConfig);
-            await queryClient.invalidateQueries({
-              queryKey: ["annotations", bookId],
-            });
           } catch (error) {
             store.getState().setCoReadingRuntime({
               error: `书评已保存，但阅读视图刷新失败：${sanitizeCoReadingError(
@@ -418,18 +544,23 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
             });
           }
         }
+        try {
+          await addJevWavyNotes(verdict.picks, claimed);
+        } catch {
+          // 波浪线只是锦上添花。
+        }
+        if (savedNotes.length > 0 || verdict.picks.length > 0) {
+          await queryClient.invalidateQueries({
+            queryKey: ["annotations", bookId],
+          });
+        }
       } catch (error) {
-        const navigationCancelled =
+        const cancelled =
           isCoReadingFocusCancellation(error) ||
           (controller.signal.aborted &&
             isCoReadingFocusCancellation(controller.signal.reason));
-        if (navigationCancelled) {
-          if (claimed.length > 0) {
-            await releaseCoReadingFocus({
-              bookId,
-              blockKeys: claimed.map((block) => block.blockKey),
-            });
-          }
+        if (cancelled) {
+          await releaseBlocks(unpersisted());
           await refreshSnapshot();
           return;
         }
@@ -443,11 +574,12 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
         }
 
         const message = sanitizeCoReadingError(error);
-        let committedAfterResponseLoss = false;
+        const remaining = unpersisted();
+        let committedAfterResponseLoss = remaining.length === 0;
         try {
           const latest = await refreshSnapshot();
-          committedAfterResponseLoss = isClaimedFocusCommitted(
-            claimed.map((block) => block.blockKey),
+          committedAfterResponseLoss ||= isClaimedFocusCommitted(
+            remaining.map((block) => block.blockKey),
             latest.blocks
           );
         } catch {
@@ -456,19 +588,20 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
 
         if (committedAfterResponseLoss) {
           store.getState().setCoReadingRuntime({
-            error: "当前页面已保存，但客户端未收到持久化响应；已避免重复写入",
+            error: "这批已保存，但客户端未收到持久化响应；已避免重复写入",
           });
         } else {
           let finalMessage = message;
           try {
-            await failClaimedBlocks(claimed, error);
+            await failClaimedBlocks(remaining, error);
           } catch (cleanupError) {
             finalMessage = `${message}；失败状态写入失败：${sanitizeCoReadingError(
               cleanupError
             )}`;
           }
           runBlockedRef.current = true;
-          blockedFocusKeyRef.current = focus.focusKey;
+          blockedAtRef.current = performance.now();
+          blockedFocusKeyRef.current = visibleFocusRef.current?.focusKey ?? null;
           store.getState().setCoReadingRuntime({
             runBlocked: true,
             error: finalMessage,
@@ -476,65 +609,62 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
         }
       }
     } catch (error) {
-      const navigationCancelled =
+      const cancelled =
         isCoReadingFocusCancellation(error) ||
         (controller.signal.aborted &&
           isCoReadingFocusCancellation(controller.signal.reason));
-      if (navigationCancelled && claimed.length > 0) {
-        await releaseCoReadingFocus({
-          bookId,
-          blockKeys: claimed.map((block) => block.blockKey),
-        });
+      if (cancelled && claimed.length > 0) {
+        await releaseBlocks(unpersisted());
         await refreshSnapshot();
-      } else if (!navigationCancelled) {
+      } else if (!cancelled) {
         store.getState().setCoReadingRuntime({
           error: sanitizeCoReadingError(error),
         });
       }
     } finally {
-      if (!ownsRun()) return;
-      activeRunRef.current = null;
-      processingRef.current = false;
-      store.getState().setCoReadingRuntime({
-        isProcessing: false,
-        processingBlockCount: 0,
-        processingStartedAt: null,
-        runBlocked:
-          runBlockedRef.current &&
-          blockedFocusKeyRef.current === visibleFocusRef.current?.focusKey,
-      });
-      try {
-        const latest = await refreshSnapshot();
-        updateRuntime();
-        const nextQueued = getVisibleQueuedBlocks(latest);
-        const nextFocus = selectVisibleQueuedFocus(nextQueued);
-        if (
-          shouldDrainCoReadingQueue({
-            status: latest.settings.status,
-            queuedCount: nextQueued.length,
-            modelReady: Boolean(coReadingModel),
-            runBlocked:
-              runBlockedRef.current &&
-              blockedFocusKeyRef.current === nextFocus?.focusKey,
-            processing: processingRef.current,
-          })
-        ) {
-          window.setTimeout(() => void drainQueue(), 0);
-        }
-      } catch (error) {
+      if (ownsRun()) {
+        activeRunRef.current = null;
+        processingRef.current = false;
         store.getState().setCoReadingRuntime({
-          error: sanitizeCoReadingError(error),
+          isProcessing: false,
+          processingBlockCount: 0,
+          processingStartedAt: null,
+          runBlocked: isRunBlocked(runBlockedRef, blockedAtRef),
         });
+        try {
+          const latest = await refreshSnapshot();
+          updateRuntime();
+          // 队列里还有已读完的段落：马上接着发下一批（它们已经等过了）。
+          if (
+            shouldDrainCoReadingQueue({
+              status: latest.settings.status,
+              queuedCount: getQueuedBlocks(latest).length,
+              modelReady: Boolean(coReadingModel),
+              runBlocked: isRunBlocked(runBlockedRef, blockedAtRef),
+              processing: processingRef.current,
+            })
+          ) {
+            window.setTimeout(() => void drainQueue(), 0);
+          }
+        } catch (error) {
+          store.getState().setCoReadingRuntime({
+            error: sanitizeCoReadingError(error),
+          });
+        }
       }
     }
   }, [
+    addJevWavyNotes,
     bookId,
     coReadingModel,
     failClaimedBlocks,
-    getVisibleQueuedBlocks,
+    getQueuedBlocks,
     prepareAiAnnotation,
+    queryClient,
     refreshSnapshot,
+    releaseBlocks,
     store,
+    updateRuntime,
     view,
   ]);
 
@@ -589,7 +719,7 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
       !isVisible
     ) {
       visibleFocusRef.current = null;
-      cancelRunOutsideFocus(null);
+      if (snapshot?.settings.status !== "active") cancelActiveRun();
       visibleBlocksRef.current = [];
       observedAtRef.current.clear();
       updateRuntime();
@@ -601,7 +731,6 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
     const visibleRanges = resolveVisibleCoReadingRanges(view, progress);
     if (visibleRanges.length === 0) {
       visibleFocusRef.current = null;
-      cancelRunOutsideFocus(null);
       visibleBlocksRef.current = [];
       store.getState().setCoReadingRuntime({
         error: "当前可见页尚未稳定，正在等待阅读视图完成布局",
@@ -616,16 +745,16 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
       progress.sectionLabel
     );
     const extractedFocus = identifyVisibleFocus(extracted);
+    const previousKeys = visibleFocusRef.current?.blockKeys ?? [];
+    const nextKeys = extractedFocus?.blockKeys ?? [];
     if (
-      blockedFocusKeyRef.current &&
-      blockedFocusKeyRef.current !== extractedFocus?.focusKey
+      previousKeys.length !== nextKeys.length ||
+      previousKeys.some((key, index) => key !== nextKeys[index])
     ) {
-      runBlockedRef.current = false;
-      blockedFocusKeyRef.current = null;
-      store.getState().setCoReadingRuntime({ runBlocked: false, error: null });
+      // 可见段落变了 = 刚翻页/滑动过。失败退避只按时间解除，避免滑动时反复撞失败。
+      lastMoveAtRef.current = performance.now();
     }
     visibleFocusRef.current = extractedFocus;
-    cancelRunOutsideFocus(extractedFocus);
 
     upsertCoReadingBlocks(extracted)
       .then((saved) => {
@@ -690,7 +819,7 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
     };
   }, [
     bookId,
-    cancelRunOutsideFocus,
+    cancelActiveRun,
     flush,
     isVisible,
     progress,
@@ -715,37 +844,74 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
         return;
       }
 
-      const threshold = currentSnapshot.settings.dwellSeconds * 1_000;
+      // 每个段落各自计时：停留够「读完它需要的时间」就进入队列。
+      // 智能判断开：按字数估算（1.5–8 秒），快速划过的段落不算读过；关：固定 N 秒。
+      const trigger = getCoReadingTrigger();
+      const dwellSeconds = trigger.seconds;
+      const unlockedAt = Date.now();
       let unlocked = false;
-      const focusBlocks = visibleBlocksRef.current.filter(
-        (block) => block.status === "tracking"
-      );
-      let focusDwellMs = Number.POSITIVE_INFINITY;
-      for (const block of focusBlocks) {
+      let stillReading = false;
+      for (const block of visibleBlocksRef.current) {
+        if (block.status !== "tracking") continue;
         const observedAt = observedAtRef.current.get(block.blockKey) ?? now;
         const elapsed = Math.max(0, Math.min(now - observedAt, TICK_MS * 1.5));
         observedAtRef.current.set(block.blockKey, now);
         block.dwellMs += Math.round(elapsed);
-        focusDwellMs = Math.min(focusDwellMs, block.dwellMs);
         dirtyRef.current.add(block.blockKey);
-      }
-      if (focusBlocks.length > 0 && focusDwellMs >= threshold) {
-        const unlockedAt = Date.now();
-        for (const block of focusBlocks) {
+        if (
+          block.dwellMs >=
+          requiredDwellMs(block.text, trigger.smart, dwellSeconds)
+        ) {
           block.status = "queued";
           block.unlockedAt ??= unlockedAt;
-          dirtyRef.current.add(block.blockKey);
+          unlocked = true;
+        } else {
+          stillReading = true;
         }
-        unlocked = true;
       }
       updateRuntime();
-      if (unlocked) {
+
+      // 队列 = 数据库里排队的 + 本地刚解锁还没写入的。
+      const persistedStatus = new Map(
+        currentSnapshot.blocks.map((block) => [block.blockKey, block.status])
+      );
+      const pending = new Map<
+        string,
+        { text: string; unlockedAt: number | null }
+      >();
+      for (const block of getQueuedBlocks(currentSnapshot))
+        pending.set(block.blockKey, block);
+      for (const block of trackedRef.current.values()) {
+        const status = persistedStatus.get(block.blockKey);
+        if (
+          block.status === "queued" &&
+          (status === undefined || status === "tracking")
+        )
+          pending.set(block.blockKey, block);
+      }
+      let queuedChars = 0;
+      let oldest = Number.POSITIVE_INFINITY;
+      for (const block of pending.values()) {
+        queuedChars += block.text.length;
+        if (block.unlockedAt) oldest = Math.min(oldest, block.unlockedAt);
+      }
+      const dispatch =
+        !processingRef.current &&
+        shouldDispatchQueue({
+          queuedCount: pending.size,
+          queuedChars,
+          maxBlocks: CO_READING_BATCH_MAX_BLOCKS,
+          // 屏幕上还有没读完的段落时，不算「停下来了」。
+          idleMs: stillReading ? 0 : now - lastMoveAtRef.current,
+          pauseMs: pauseMsFor(dwellSeconds),
+          oldestWaitMs: Number.isFinite(oldest) ? unlockedAt - oldest : 0,
+        });
+      if (unlocked || dispatch) {
         void flush()
-          .then(() => drainQueue())
+          .then(() => (dispatch ? drainQueue() : undefined))
           .catch((error) => {
             runBlockedRef.current = true;
-            blockedFocusKeyRef.current =
-              visibleFocusRef.current?.focusKey ?? null;
+            blockedAtRef.current = performance.now();
             store.getState().setCoReadingRuntime({
               runBlocked: true,
               error: sanitizeCoReadingError(error),
@@ -754,7 +920,7 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
       }
     }, TICK_MS);
     return () => window.clearInterval(interval);
-  }, [drainQueue, flush, isVisible, store, updateRuntime]);
+  }, [drainQueue, flush, getQueuedBlocks, isVisible, store, updateRuntime]);
 
   useEffect(() => {
     const interval = window.setInterval(() => void flush(), FLUSH_MS);
@@ -765,45 +931,15 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
   }, [flush]);
 
   useEffect(() => {
-    const visibleQueued = getVisibleQueuedBlocks(snapshot);
-    const visibleFocus = selectVisibleQueuedFocus(visibleQueued);
-    if (
-      shouldDrainCoReadingQueue({
-        status: snapshot?.settings.status,
-        queuedCount: visibleQueued.length,
-        modelReady: Boolean(coReadingModel),
-        runBlocked:
-          runBlockedRef.current &&
-          blockedFocusKeyRef.current === visibleFocus?.focusKey,
-        processing: processingRef.current,
-      })
-    ) {
-      void drainQueue().catch((error) => {
-        runBlockedRef.current = true;
-        blockedFocusKeyRef.current = visibleFocusRef.current?.focusKey ?? null;
-        store.getState().setCoReadingRuntime({
-          runBlocked: true,
-          error: sanitizeCoReadingError(error),
-        });
-      });
-    }
-  }, [
-    coReadingModel,
-    drainQueue,
-    getVisibleQueuedBlocks,
-    samplingTick,
-    snapshot,
-    store,
-  ]);
-
-  useEffect(() => {
     if (!view || snapshot?.settings.status !== "active" || !isVisible) return;
     let timer: number | undefined;
+    // 节流而不是防抖：连续滑动时也每 300ms 采样一次，快速划过的段落不会被误算停留时间。
     const resample = () => {
-      if (timer) window.clearTimeout(timer);
+      if (timer) return;
       timer = window.setTimeout(() => {
+        timer = undefined;
         setSamplingTick((value) => value + 1);
-      }, 250);
+      }, 300);
     };
     view.addEventListener("load", resample);
     view.addEventListener("relocate", resample);

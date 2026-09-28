@@ -8,6 +8,10 @@ import {
   isPassageHard,
   normalizeJevSettings,
   pickNovaReaction,
+  SENTENCE_PICK_MAX_OPTIONS,
+  buildSentencePickQuestion,
+  pickSentences,
+  splitCandidateSentences,
 } from "./jev-rules";
 
 test("buildJevRequest uses the OpenRouter decisions API by default", () => {
@@ -83,4 +87,56 @@ test("isPassageHard reads the noul answer and tolerates missing data", () => {
   assert.equal(isPassageHard({ hard_to_follow: { noul: 0.8 } }), true);
   assert.equal(isPassageHard({ hard_to_follow: { probability: 0.2 } }), false);
   assert.equal(isPassageHard({}), null);
+});
+
+test("splitCandidateSentences round-robins blocks and filters length", () => {
+  const candidates = splitCandidateSentences([
+    { blockKey: "a", text: "这是第一段的第一句话。这是第一段的第二句话！短。" },
+    { blockKey: "b", text: "这是第二段唯一的一句话？" },
+  ]);
+  assert.deepEqual(
+    candidates.map((c) => [c.key, c.blockKey, c.text]),
+    [
+      ["s1", "a", "这是第一段的第一句话。"],
+      ["s2", "b", "这是第二段唯一的一句话？"],
+      ["s3", "a", "这是第一段的第二句话！"],
+    ]
+  );
+  const many = splitCandidateSentences(
+    Array.from({ length: 20 }, (_, i) => ({ blockKey: `k${i}`, text: `第${i}段里有一句足够长的话。` }))
+  );
+  assert.equal(many.length, SENTENCE_PICK_MAX_OPTIONS);
+});
+
+test("buildSentencePickQuestion offers a none option", () => {
+  const question = buildSentencePickQuestion([{ key: "s1", blockKey: "a", text: "一句足够长的候选句子。" }]);
+  assert.equal(question.type, "choice");
+  assert.ok(question.type === "choice" && question.criteria.none);
+  assert.ok(question.type === "choice" && question.criteria.s1 === "一句足够长的候选句子。");
+});
+
+test("pickSentences takes confident top picks and respects none", () => {
+  const candidates = [
+    { key: "s1", blockKey: "a", text: "甲句甲句甲句甲句。" },
+    { key: "s2", blockKey: "a", text: "乙句乙句乙句乙句。" },
+    { key: "s3", blockKey: "b", text: "丙句丙句丙句丙句。" },
+  ];
+  assert.deepEqual(
+    pickSentences({ choice: "s2", probabilities: { s1: 0.1, s2: 0.5, s3: 0.3, none: 0.1 } }, candidates).map(
+      (p) => p.key
+    ),
+    ["s2", "s3"]
+  );
+  // 第二名不到第一名的一半：只划一句。
+  assert.deepEqual(
+    pickSentences({ choice: "s1", probabilities: { s1: 0.7, s2: 0.21, none: 0.09 } }, candidates).map((p) => p.key),
+    ["s1"]
+  );
+  // JEV 觉得都很普通。
+  assert.deepEqual(pickSentences({ choice: "none", probabilities: { s1: 0.3, none: 0.6 } }, candidates), []);
+  // 把握太低。
+  assert.deepEqual(pickSentences({ choice: "s1", probabilities: { s1: 0.2, s2: 0.19 } }, candidates), []);
+  // 只有 choice 没有概率。
+  assert.deepEqual(pickSentences({ choice: "s3" }, candidates).map((p) => p.key), ["s3"]);
+  assert.deepEqual(pickSentences(undefined, candidates), []);
 });

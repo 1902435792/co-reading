@@ -62,3 +62,31 @@ export function missingBridgePresets(existingIds: readonly string[]): { id: stri
   const existing = new Set(existingIds.map((id) => id.trim()));
   return VCP_BRIDGE_PRESETS.filter((preset) => !existing.has(preset.id));
 }
+
+// ---------- 按用途自动加 Profile 前缀（用户只需要选基础模型） ----------
+
+export type BridgePurpose = "coreading" | "reading" | "memory" | "diary";
+
+/** 每个用途默认走的 Profile；日记直接用基础模型名（Bridge 的日记接口自己带 Profile）。 */
+export const BRIDGE_PURPOSE_PROFILE: Record<BridgePurpose, string> = {
+  coreading: "coreading-lite",
+  reading: "reading",
+  memory: "memory-extract",
+  diary: "",
+};
+
+/** 程序认识的 Profile：这些前缀会被按用途替换；别的前缀当作用户自定义，原样保留。 */
+const KNOWN_PROFILES = new Set([...VCP_BRIDGE_PROFILES.map((item) => item.id), "coreading"]);
+
+/**
+ * 把设置里选的模型换成这个用途真正要发给 Bridge 的模型 ID。
+ * - 没前缀或是认识的前缀：换成用途对应的 Profile；
+ * - 自定义前缀：保留；
+ * - fast：去掉末尾的 -high（不深度思考，快很多）。
+ */
+export function bridgeModelIdFor(modelId: string, purpose: BridgePurpose, options: { fast?: boolean } = {}): string {
+  const { profile, model } = splitBridgeModelId(modelId);
+  const base = options.fast ? model.replace(/-high$/u, "") || model : model;
+  if (profile && !KNOWN_PROFILES.has(profile)) return `${profile}/${base}`;
+  return composeBridgeModelId(BRIDGE_PURPOSE_PROFILE[purpose], base);
+}

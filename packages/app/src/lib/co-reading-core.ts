@@ -9,11 +9,11 @@ import type {
   ValidatedCoReadingItemResult,
 } from "../types/co-reading.ts";
 
-const TOTAL_INPUT_BUDGET = 5_000;
+const TOTAL_INPUT_BUDGET = 9_000;
 const SYSTEM_BUDGET = 700;
 const SAFETY_BUDGET = 200;
-const NEW_BLOCK_BUDGET = 2_400;
-const RECENT_BLOCK_BUDGET = 1_200;
+const NEW_BLOCK_BUDGET = 5_000;
+const RECENT_BLOCK_BUDGET = 2_000;
 const SUPPLEMENTAL_BUDGET =
   TOTAL_INPUT_BUDGET -
   SYSTEM_BUDGET -
@@ -21,7 +21,7 @@ const SUPPLEMENTAL_BUDGET =
   NEW_BLOCK_BUDGET -
   RECENT_BLOCK_BUDGET;
 
-export const CO_READING_BATCH_MAX_BLOCKS = 6;
+export const CO_READING_BATCH_MAX_BLOCKS = 12;
 
 const CJK_PATTERN = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u;
 const LATIN_PATTERN = /[\p{L}\p{N}]/u;
@@ -123,10 +123,22 @@ export function getCoReadingErrorInfo(error: unknown): CoReadingErrorInfo {
     };
   }
   if (
+    /fetch failed after all retries|upstream_error|upstream fetch failed|service unavailable|bad gateway|无可用渠道|\b50[0234]\b/u.test(
+      normalized
+    )
+  ) {
+    return {
+      message: "VCP 是通的，但上游模型服务商拒绝了请求（过载、限流，或这个模型名在服务商那边不可用）。稍后重试，或在设置里换一个模型。",
+      fatal: false,
+      retryable: true,
+      kind: "network",
+    };
+  }
+  if (
     /fetch failed|network|socket|econn|connection|连接失败/u.test(normalized)
   ) {
     return {
-      message: "无法连接模型服务：请确认 VCP 后端（vcp-main）已启动，可在浏览器打开 http://127.0.0.1:3100/health?deep=1 自检后重试。",
+      message: "无法连接模型服务：请确认 VCP 已启动；平板上还需要电脑开着、隧道在线，然后重试。",
       fatal: false,
       retryable: true,
       kind: "network",
@@ -406,23 +418,47 @@ export function validateCoReadingBatchDecision(
   return { annotations, summary };
 }
 
+export interface ValidateCoReadingItemOptions {
+  /** 队列模式：一批可以跨越多个页面焦点（持久化时再按焦点分组）。 */
+  multiFocus?: boolean;
+  /** 丢掉个别不合格的批注，而不是让整批失败。 */
+  dropInvalid?: boolean;
+}
+
 export function validateCoReadingItemResult(
   result: CoReadingItemResult,
-  claimedBlocks: CoReadingBlock[]
+  claimedBlocks: CoReadingBlock[],
+  options: ValidateCoReadingItemOptions = {}
 ): ValidatedCoReadingItemResult {
   if (claimedBlocks.length === 0) throw new Error("页面阅读单元不能为空");
-  if (result.annotations.length > 3)
+  if (result.annotations.length > 3 && !options.dropInvalid)
     throw new Error("单个页面最多返回 3 条批注");
   const focusKeys = new Set(
     claimedBlocks.map((block) => block.focusKey ?? block.blockKey)
   );
-  if (focusKeys.size !== 1 || focusKeys.has("")) {
+  if (focusKeys.has("") || (focusKeys.size !== 1 && !options.multiFocus)) {
     throw new Error("页面阅读单元必须属于同一个可见焦点");
   }
-  const summary = result.summary.trim();
-  if (summary.length > 2_000) throw new Error("连续阅读摘要超过长度限制");
+  let summary = result.summary.trim();
+  if (summary.length > 2_000) {
+    if (!options.dropInvalid) throw new Error("连续阅读摘要超过长度限制");
+    summary = summary.slice(0, 2_000);
+  }
   const seenQuotes = new Set<string>();
-  const annotations = result.annotations.map((item) => {
+  const candidates = options.dropInvalid
+    ? result.annotations.slice(0, 3)
+    : result.annotations;
+  const annotations: ValidatedCoReadingItemResult["annotations"] = [];
+  for (const item of candidates) {
+    try {
+      annotations.push(validateItemAnnotation(item));
+    } catch (error) {
+      if (!options.dropInvalid) throw error;
+    }
+  }
+  return { annotations, summary };
+
+  function validateItemAnnotation(item: CoReadingItemResult["annotations"][number]) {
     const block = claimedBlocks.find(
       (candidate) => candidate.blockKey === item.blockKey
     );
@@ -439,8 +475,7 @@ export function validateCoReadingItemResult(
     if (seenQuotes.has(quoteKey)) throw new Error("当前页面返回了重复批注引文");
     seenQuotes.add(quoteKey);
     return { block, quote, comment };
-  });
-  return { annotations, summary };
+  }
 }
 
 export function validateCoReadingReviewResult(

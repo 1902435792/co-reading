@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   bridgeBaseModels,
+  bridgeModelIdFor,
   bridgeModelName,
   composeBridgeModelId,
   missingBridgePresets,
@@ -28,4 +29,25 @@ test("names and presets", () => {
   assert.equal(bridgeModelName("", "gemini-3.5-flash"), "gemini-3.5-flash");
   assert.equal(missingBridgePresets(["coreading-lite/gemini-3.8-flash-high"]).length, 1);
   assert.equal(missingBridgePresets([]).length, 2);
+});
+
+test("bridgeModelIdFor adds the purpose profile automatically", () => {
+  assert.equal(bridgeModelIdFor("gemini-3.8-flash", "coreading"), "coreading-lite/gemini-3.8-flash");
+  assert.equal(bridgeModelIdFor("gemini-3.8-flash", "reading"), "reading/gemini-3.8-flash");
+  assert.equal(bridgeModelIdFor("gemini-3.8-flash", "memory"), "memory-extract/gemini-3.8-flash");
+  assert.equal(bridgeModelIdFor("memory-extract/gemini-3.8-flash", "diary"), "gemini-3.8-flash");
+  // 认识的前缀按用途替换。
+  assert.equal(bridgeModelIdFor("memory-extract/gemini-3.8-flash", "reading"), "reading/gemini-3.8-flash");
+  assert.equal(bridgeModelIdFor("coreading/gemini-3.8-flash-high", "coreading"), "coreading-lite/gemini-3.8-flash-high");
+  // 自定义前缀原样保留。
+  assert.equal(bridgeModelIdFor("snow/gemini-3.8-flash", "reading"), "snow/gemini-3.8-flash");
+});
+
+test("bridgeModelIdFor fast drops -high", () => {
+  assert.equal(
+    bridgeModelIdFor("coreading-lite/gemini-3.8-flash-high", "coreading", { fast: true }),
+    "coreading-lite/gemini-3.8-flash"
+  );
+  assert.equal(bridgeModelIdFor("gemini-3.8-flash", "coreading", { fast: true }), "coreading-lite/gemini-3.8-flash");
+  assert.equal(bridgeModelIdFor("snow/x-high", "coreading", { fast: true }), "snow/x");
 });

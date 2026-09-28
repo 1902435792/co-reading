@@ -1,4 +1,6 @@
 import { useProviderStore } from "@/store/provider-store";
+import { isVcpBridgeUrl } from "@/components/nova/nova-memory";
+import { type BridgePurpose, bridgeModelIdFor } from "@/components/settings/vcp-bridge-models";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -74,7 +76,14 @@ export function createProviderInstance(config: ProviderConfig) {
 /**
  * 根据提供商ID和模型ID创建模型实例
  */
-export function createModelInstance(providerId: string, modelId: string) {
+export interface ModelInstanceOptions {
+  /** VCP Bridge 提供商：按用途自动换成对应的 Profile 前缀（用户只选基础模型）。 */
+  purpose?: BridgePurpose;
+  /** VCP Bridge 提供商：去掉 -high，用不深度思考的快速版本。 */
+  fast?: boolean;
+}
+
+export function createModelInstance(providerId: string, modelId: string, options: ModelInstanceOptions = {}) {
   // 从store获取提供商配置
   const { modelProviders } = useProviderStore.getState();
   const provider = modelProviders.find((p) => p.provider === providerId);
@@ -100,7 +109,11 @@ export function createModelInstance(providerId: string, modelId: string) {
   });
 
   // 返回模型实例
-  return providerInstance(modelId);
+  const requestModelId =
+    options.purpose && isVcpBridgeUrl(provider.baseUrl)
+      ? bridgeModelIdFor(modelId, options.purpose, { fast: options.fast })
+      : modelId;
+  return providerInstance(requestModelId);
 }
 
 /**

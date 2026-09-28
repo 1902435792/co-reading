@@ -1,4 +1,5 @@
 import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
+import { isJevPickNote } from "@/lib/co-reading-trigger";
 import { openReadingFootprintForAnnotation } from "@/components/side-chat/co-reading-backlink";
 import { Button } from "@/components/ui/button";
 import {
@@ -199,7 +200,15 @@ export const ReviewThread = ({
 
   const color = HIGHLIGHT_COLOR_HEX[top.color ?? "yellow"] ?? HIGHLIGHT_COLOR_HEX.yellow;
   const kindLabel =
-    kind === "book" ? "整书书评" : kind === "nova" ? "Nova 共读" : top.note?.trim() ? "划线评论" : "划线";
+    kind === "book"
+      ? "整书书评"
+      : kind === "nova"
+        ? isJevPickNote(top)
+          ? "JEV 划句"
+          : "Nova 共读"
+        : top.note?.trim()
+          ? "划线评论"
+          : "划线";
 
   return (
     <article className="dr-rise-in overflow-hidden rounded-xl border bg-card shadow-xs">

@@ -36,6 +36,7 @@ import {
 } from "./co-reading-accordion";
 import type { ReadingFootprintTarget } from "./co-reading-backlink";
 import { CoReadingDiaryAction } from "./co-reading-diary-action";
+import { CoReadingTriggerControls } from "./co-reading-trigger-controls";
 import { CoReadingRangeMap } from "./co-reading-range-map";
 
 interface CoReadingPanelV2Props {
@@ -53,7 +54,6 @@ export function CoReadingPanelV2({ bookId, readingFootprintTarget }: CoReadingPa
   const storageKey = `deepreader:co-reading-expanded:${bookId}`;
   const [expanded, setExpanded] = useState(() => window.localStorage.getItem(storageKey) !== "false");
   const [section, setSection] = useState<React.Key | null>("activity");
-  const [dwellSeconds, setDwellSeconds] = useState(20);
   const [retryingFailed, setRetryingFailed] = useState(false);
   const [processingElapsedSeconds, setProcessingElapsedSeconds] = useState(0);
 
@@ -70,9 +70,6 @@ export function CoReadingPanelV2({ bookId, readingFootprintTarget }: CoReadingPa
   }, [runtime.isProcessing, runtime.processingStartedAt]);
 
   useEffect(() => window.localStorage.setItem(storageKey, String(expanded)), [expanded, storageKey]);
-  useEffect(() => {
-    if (snapshot) setDwellSeconds(snapshot.settings.dwellSeconds);
-  }, [snapshot]);
   useEffect(() => {
     if (!readingFootprintTarget || readingFootprintTarget.bookId !== bookId) return;
     setExpanded(true);
@@ -183,7 +180,6 @@ export function CoReadingPanelV2({ bookId, readingFootprintTarget }: CoReadingPa
     }
   };
   const saveStatus = (status: "off" | "active" | "paused") => changeSettings({ status });
-  const saveDwell = () => changeSettings({ dwellSeconds });
   const changeModel = (next: SelectedModel) =>
     changeSettings({ modelProviderId: next.providerId, modelId: next.modelId });
   const clearBookModel = () => changeSettings({ modelProviderId: "", modelId: "" });
@@ -312,22 +308,7 @@ export function CoReadingPanelV2({ bookId, readingFootprintTarget }: CoReadingPa
                 </Button>
               )}
             </div>
-            <div className="mt-3 flex items-center gap-3 rounded-lg bg-background/70 px-2.5 py-2">
-              <Clock3 className="size-4 text-primary" />
-              <label className="flex flex-1 items-center gap-2 text-xs">
-                <span className="shrink-0">停留 {dwellSeconds} 秒后交给 Agent</span>
-                <input
-                  type="range"
-                  min={5}
-                  max={60}
-                  step={5}
-                  value={dwellSeconds}
-                  onChange={(event) => setDwellSeconds(Number(event.target.value))}
-                  onPointerUp={() => void saveDwell()}
-                  className="min-w-0 flex-1"
-                />
-              </label>
-            </div>
+            <CoReadingTriggerControls />
             {snapshot.settings.status !== "off" && (
               <Button
                 variant="ghost"

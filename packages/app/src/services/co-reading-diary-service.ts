@@ -1,4 +1,5 @@
 import type { CoReadingDiaryPayload } from "@/lib/co-reading-diary";
+import { bridgeModelIdFor } from "@/components/settings/vcp-bridge-models";
 import {
   buildCoReadingDiaryHeaders,
   buildCoReadingDiaryRequest,
@@ -44,7 +45,8 @@ export async function postVcpDiaryPayload(payload: CoReadingDiaryPayload) {
   const response = await fetchTauri(resolveCoReadingDiaryEndpoint(baseUrl), {
     method: "POST",
     headers: buildCoReadingDiaryHeaders(apiKey),
-    body: JSON.stringify(buildCoReadingDiaryRequest(payload, selected.modelId)),
+    // 日记接口自己带 Profile：只发基础模型名。
+    body: JSON.stringify(buildCoReadingDiaryRequest(payload, bridgeModelIdFor(selected.modelId, "diary"))),
     signal: AbortSignal.timeout(CO_READING_DIARY_TIMEOUT_MS),
   });
   const body = (await response
