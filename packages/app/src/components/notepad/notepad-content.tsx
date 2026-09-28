@@ -1,3 +1,4 @@
+import { isJevPickNote } from "@/lib/co-reading-trigger";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -46,7 +47,9 @@ export const NotepadContent = ({ bookId, showDigest, onOpenDigest, onCloseDigest
   // 书评区：每条划线 / Nova 共读边注 / 整书书评是一个帖子，回复按楼层挂在下面；默认最新在上
   const [order, setOrder] = useState<NotepadOrder>(() => loadNotepadOrder());
   const [filter, setFilter] = useState<ThreadFilter>("all");
-  const allThreads = useMemo(() => buildAnnotationThreads(annotations ?? [], order), [annotations, order]);
+  // JEV 波浪线已停用：以前划的也不再出现在书评区。
+  const visibleAnnotations = useMemo(() => (annotations ?? []).filter((note) => !isJevPickNote(note)), [annotations]);
+  const allThreads = useMemo(() => buildAnnotationThreads(visibleAnnotations, order), [visibleAnnotations, order]);
   const threads = useMemo(
     () =>
       filter === "all"
@@ -56,7 +59,7 @@ export const NotepadContent = ({ bookId, showDigest, onOpenDigest, onCloseDigest
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: 标注列表刷新时重新读取回评方式
   const reviewModes = useMemo(() => loadReviewModes(), [annotations]);
-  const passageCount = useMemo(() => annotations.filter((note) => note.type === "annotation").length, [annotations]);
+  const passageCount = useMemo(() => visibleAnnotations.filter((note) => note.type === "annotation").length, [visibleAnnotations]);
 
   const [composing, setComposing] = useState(false);
   const [draft, setDraft] = useState("");

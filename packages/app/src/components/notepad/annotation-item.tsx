@@ -1,9 +1,7 @@
 import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
-import { openReadingFootprintForAnnotation } from "@/components/side-chat/co-reading-backlink";
 import { type CommentReviewMode, REVIEW_MODE_LABEL } from "@/lib/comment-review";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
 import { HIGHLIGHT_COLOR_HEX, HIGHLIGHT_COLOR_RGBA } from "@/services/constants";
-import { useLayoutStore } from "@/store/layout-store";
 
 import type { BookNote } from "@/types/book";
 import { Menu } from "@tauri-apps/api/menu";
@@ -35,8 +33,6 @@ export const AnnotationItem = ({
   reviewMode,
 }: AnnotationItemProps) => {
   const view = useReaderStore((state) => state.view);
-  const bookId = useReaderStore((state) => state.bookId);
-  const setPendingReadingFootprint = useReaderStore((state) => state.setPendingReadingFootprint);
 
   const bgColor = annotation.color ? HIGHLIGHT_COLOR_RGBA[annotation.color] : HIGHLIGHT_COLOR_RGBA.yellow;
   const lineColor = annotation.color ? HIGHLIGHT_COLOR_HEX[annotation.color] : HIGHLIGHT_COLOR_HEX.yellow;
@@ -62,17 +58,8 @@ export const AnnotationItem = ({
     if (view) {
       view.goTo(annotation.cfi);
     }
-    // AI 批注额外驱动右侧阅读地图；人类批注不触发
-    const opened = openReadingFootprintForAnnotation({
-      bookId: bookId ?? undefined,
-      annotation,
-      setPendingReadingFootprint: setPendingReadingFootprint ?? undefined,
-      eventTarget: typeof window !== "undefined" ? window : undefined,
-    });
-    if (opened) {
-      useLayoutStore.setState({ isChatVisible: true });
-    }
-  }, [annotation, bookId, setPendingReadingFootprint, view]);
+    // 不再联动打开右侧栏。
+  }, [annotation, view]);
   const handleNativeDelete = useCallback(async () => {
     try {
       const confirmed = await ask(`确定要删除这条标注吗？\n\n"${annotation.text || ""}"\n\n此操作无法撤销。`, {

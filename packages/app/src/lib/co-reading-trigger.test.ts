@@ -25,8 +25,10 @@ test("normalizeCoReadingTrigger fills defaults and clamps seconds", () => {
     smart: false,
     wavy: false,
     fast: false,
+    ahead: true,
     seconds: 4,
   });
+  assert.equal(normalizeCoReadingTrigger({ ahead: false }).ahead, false);
 });
 
 test("requiredDwellMs: fixed seconds when smart is off, length-based when on", () => {

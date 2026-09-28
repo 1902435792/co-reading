@@ -96,6 +96,11 @@ interface NovaReaction {
 const NOVA_CROSSBOOK_GAP_MS = 3 * 60_000;
 const POSITION_KEY = "deepreader:nova-companion-position";
 const COLLAPSED_KEY = "deepreader:nova-companion-collapsed";
+type NovaSide = "left" | "right";
+/** 松手时离边这么近就收进边里。 */
+const NOVA_DOCK_EDGE = 24;
+/** 收进边里时藏到边外的宽度（收起的头像 48px，露出一大半）。 */
+const NOVA_DOCK_HIDDEN = 18;
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -146,14 +151,22 @@ export function NovaCompanion({ bookId, isTabVisible }: NovaCompanionProps) {
   if (!bookId || !snapshot || !runtime || status === "off" || mode === "off") {
     return null;
   }
-  return <NovaCompanionInner bookId={bookId} isTabVisible={isTabVisible} showAvatar={mode === "full"} />;
+  return (
+    <NovaCompanionInner
+      bookId={bookId}
+      isTabVisible={isTabVisible}
+      showAvatar={mode === "full" || mode === "figure"}
+      quiet={mode === "figure"}
+    />
+  );
 }
 
 function NovaCompanionInner({
   bookId,
   isTabVisible,
   showAvatar,
-}: { bookId: string; isTabVisible: boolean; showAvatar: boolean }) {
+  quiet = false,
+}: { bookId: string; isTabVisible: boolean; showAvatar: boolean; quiet?: boolean }) {
   const snapshot = useReaderStore((state) => state.coReadingSnapshot)!;
   const runtime = useReaderStore((state) => state.coReadingRuntime)!;
   const sessionStats = useReaderStore((state) => state.sessionStats);
@@ -170,9 +183,16 @@ function NovaCompanionInner({
   const reducedMotion = useReducedMotion() ?? false;
 
   const boundsRef = useRef<HTMLDivElement>(null);
-  const savedPosition = useMemo(() => readJson(POSITION_KEY, { x: 0, y: 0 }), []);
+  const savedPosition = useMemo(
+    () => readJson<{ x: number; y: number; side?: NovaSide; docked?: boolean }>(POSITION_KEY, { x: 0, y: 0 }),
+    [],
+  );
   const x = useMotionValue(savedPosition.x);
   const y = useMotionValue(savedPosition.y);
+  // 靠哪边：决定锚点和气泡朝哪边开；docked = 拖到边上收成半个小头像。
+  const [side, setSide] = useState<NovaSide>(savedPosition.side === "left" ? "left" : "right");
+  const [docked, setDocked] = useState(Boolean(savedPosition.docked));
+  const dragRef = useRef<HTMLDivElement>(null);
 
   const [collapsed, setCollapsed] = useState(() => readJson(COLLAPSED_KEY, false));
   const [reaction, setReaction] = useState<NovaReaction | null>(null);
@@ -249,6 +269,18 @@ function NovaCompanionInner({
     window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(collapsed));
     if (!collapsed) setUnread(false);
   }, [collapsed]);
+  // 别处把 Nova 展开了（比如她要回答你）：同时从边上出来，别半截藏在边外。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 只在展开 / 收进边的状态变化时处理
+  useEffect(() => {
+    if (collapsed || !docked) return;
+    x.set(0);
+    setDocked(false);
+    try {
+      window.localStorage.setItem(POSITION_KEY, JSON.stringify({ x: 0, y: y.get(), side, docked: false }));
+    } catch {
+      // ignore
+    }
+  }, [collapsed, docked]);
 
   // 翻页 = 有活动，叫醒 Nova。
   // biome-ignore lint/correctness/useExhaustiveDependencies: location 变化本身就是触发条件
@@ -434,6 +466,10 @@ function NovaCompanionInner({
       openAskMenu(selected);
       return;
     }
+    if (docked) {
+      undock();
+      return;
+    }
     if (collapsed) {
       setCollapsed(false);
       return;
@@ -446,13 +482,41 @@ function NovaCompanionInner({
   const openSource = () => {
     if (bubble?.target) setPendingCoReadingSource?.(bubble.target);
   };
-  const savePosition = () => {
-    window.localStorage.setItem(POSITION_KEY, JSON.stringify({ x: x.get(), y: y.get() }));
+  const savePosition = (next: { side?: NovaSide; docked?: boolean } = {}) => {
+    window.localStorage.setItem(
+      POSITION_KEY,
+      JSON.stringify({ x: x.get(), y: y.get(), side: next.side ?? side, docked: next.docked ?? docked }),
+    );
   };
   const resetPosition = () => {
     x.set(0);
     y.set(0);
-    savePosition();
+    setSide("right");
+    setDocked(false);
+    savePosition({ side: "right", docked: false });
+  };
+  /** 松手后：按在屏幕哪一半决定靠左还是靠右；贴到边上就收起成半个头像。 */
+  const settleAfterDrag = () => {
+    const el = dragRef.current;
+    const bounds = boundsRef.current?.getBoundingClientRect();
+    if (!el || !bounds) return savePosition();
+    const rect = el.getBoundingClientRect();
+    const nextSide: NovaSide = rect.left + rect.width / 2 < bounds.left + bounds.width / 2 ? "left" : "right";
+    const dock = nextSide === "left" ? rect.left <= bounds.left + NOVA_DOCK_EDGE : rect.right >= bounds.right - NOVA_DOCK_EDGE;
+    // x 是相对锚点（左右各留 16px）的偏移。
+    const offset = nextSide === "left" ? rect.left - (bounds.left + 16) : rect.right - (bounds.right - 16);
+    x.set(dock ? (nextSide === "left" ? -(16 + NOVA_DOCK_HIDDEN) : 16 + NOVA_DOCK_HIDDEN) : offset);
+    setSide(nextSide);
+    setDocked(dock);
+    if (dock) setCollapsed(true);
+    savePosition({ side: nextSide, docked: dock });
+  };
+  /** 从边上拉出来：回到离边 16px 的位置，展开。 */
+  const undock = () => {
+    x.set(0);
+    setDocked(false);
+    setCollapsed(false);
+    savePosition({ docked: false });
   };
   const closeBubble = () => {
     setBubble(null);
@@ -870,8 +934,14 @@ function NovaCompanionInner({
   const fallbackAllowed = !bubble && dismissedFallbackMood !== mood;
   const sleepyLine = mood === "sleep" && fallbackAllowed ? pickNovaLine("sleep", imageSeed) : null;
   const pausedLine = mood === "paused" && fallbackAllowed ? pickNovaLine("paused", 0) : null;
-  const shownBubble: NovaBubble | null =
+  const autoBubble: NovaBubble | null =
     bubble ?? (sleepyLine || pausedLine ? { id: -1, kind: "info", text: (sleepyLine ?? pausedLine)!, ttl: 0 } : null);
+  // 「只要形象」：不主动冒气泡（新边注、提醒、困了），只显示点她打开的菜单和她的回答。
+  const shownBubble: NovaBubble | null = quiet
+    ? bubble && (bubble.kind === "menu" || bubble.kind === "answer")
+      ? bubble
+      : null
+    : autoBubble;
   const avatarSize = collapsed ? 48 : showAvatar ? 120 : 44;
 
   return (
@@ -885,13 +955,16 @@ function NovaCompanionInner({
           draggedRef.current = true;
         }}
         onDragEnd={() => {
-          savePosition();
+          settleAfterDrag();
           window.setTimeout(() => {
             draggedRef.current = false;
           }, 120);
         }}
+        ref={dragRef}
         style={{ x, y }}
-        className="group pointer-events-auto absolute right-4 bottom-14 flex flex-col items-end"
+        className={`group pointer-events-auto absolute bottom-14 flex flex-col transition-opacity ${
+          side === "left" ? "left-4 items-start" : "right-4 items-end"
+        } ${docked ? "opacity-80" : ""}`}
       >
         <AnimatePresence mode="wait">
           {!collapsed && shownBubble && (
@@ -899,6 +972,7 @@ function NovaCompanionInner({
               key={shownBubble.id}
               bubble={shownBubble}
               reducedMotion={reducedMotion}
+              side={side}
               onClose={closeBubble}
               onOpenSource={openSource}
             />
@@ -1049,11 +1123,13 @@ function NovaCompanionInner({
 function NovaSpeechBubble({
   bubble,
   reducedMotion,
+  side = "right",
   onClose,
   onOpenSource,
 }: {
   bubble: NovaBubble;
   reducedMotion: boolean;
+  side?: NovaSide;
   onClose: () => void;
   onOpenSource: () => void;
 }) {
@@ -1102,8 +1178,8 @@ function NovaSpeechBubble({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.95 }}
       transition={{ type: "spring", stiffness: 420, damping: 28 }}
-      style={{ transformOrigin: "bottom right" }}
-      className={`relative mr-6 mb-2 max-w-[70vw] ${bubble.kind === "answer" || bubble.kind === "menu" ? "w-80" : "w-64"}`}
+      style={{ transformOrigin: side === "left" ? "bottom left" : "bottom right" }}
+      className={`relative mb-2 max-w-[70vw] ${side === "left" ? "ml-6" : "mr-6"} ${bubble.kind === "answer" || bubble.kind === "menu" ? "w-80" : "w-64"}`}
       onPointerDownCapture={(event) => event.stopPropagation()}
     >
       <div className={`relative rounded-2xl border-2 px-3 py-2 text-xs shadow-lg ${tone}`}>

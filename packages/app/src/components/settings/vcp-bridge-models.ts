@@ -65,7 +65,7 @@ export function missingBridgePresets(existingIds: readonly string[]): { id: stri
 
 // ---------- 按用途自动加 Profile 前缀（用户只需要选基础模型） ----------
 
-export type BridgePurpose = "coreading" | "reading" | "memory" | "diary";
+export type BridgePurpose = "coreading" | "reading" | "memory" | "diary" | "plain";
 
 /** 每个用途默认走的 Profile；日记直接用基础模型名（Bridge 的日记接口自己带 Profile）。 */
 export const BRIDGE_PURPOSE_PROFILE: Record<BridgePurpose, string> = {
@@ -73,10 +73,12 @@ export const BRIDGE_PURPOSE_PROFILE: Record<BridgePurpose, string> = {
   reading: "reading",
   memory: "memory-extract",
   diary: "",
+  // 后台小请求（问答前整理上下文、自动打标签）：不注入人格、不写 OneRing。
+  plain: "deepreader-plain",
 };
 
 /** 程序认识的 Profile：这些前缀会被按用途替换；别的前缀当作用户自定义，原样保留。 */
-const KNOWN_PROFILES = new Set([...VCP_BRIDGE_PROFILES.map((item) => item.id), "coreading"]);
+const KNOWN_PROFILES = new Set([...VCP_BRIDGE_PROFILES.map((item) => item.id), "coreading", "deepreader-plain"]);
 
 /**
  * 把设置里选的模型换成这个用途真正要发给 Bridge 的模型 ID。

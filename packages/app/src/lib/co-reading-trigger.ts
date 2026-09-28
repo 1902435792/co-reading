@@ -6,14 +6,16 @@ import { useSyncExternalStore } from "react";
  *   交给 Nova 之前再让 JEV 判断值不值得批注（配置了 JEV 时）。
  * - smart 关：段落在屏幕上停留满 N 秒就算读过，直接交给 Nova。
  * - seconds：上面的 N；智能模式下也表示「停下来多久算停顿」。
- * - wavy：让 JEV 顺带挑一两句划波浪线（需要配置 JEV）。
+ * - wavy：JEV 波浪线选句。用户觉得没用、不好看，已停用：始终为 false（字段保留只为兼容旧设置）。
  * - fast：自动边注用不深度思考的快速模型（VCP Bridge 上去掉 -high）。
+ * - ahead：提前发——这一屏有段落读完，就把这一屏剩下的也一起交给 Nova（慢模型时边注来得及）。
  */
 export interface CoReadingTriggerSettings {
   smart: boolean;
   seconds: number;
   wavy: boolean;
   fast: boolean;
+  ahead: boolean;
 }
 
 export const TRIGGER_SECONDS_MIN = 1;
@@ -22,9 +24,10 @@ export const TRIGGER_SECONDS_MAX = 10;
 export const DEFAULT_CO_READING_TRIGGER: CoReadingTriggerSettings = {
   smart: true,
   seconds: 2,
-  wavy: true,
+  wavy: false,
   // 默认按选中的模型原样请求（主人选了 -high 就用深度思考版）。
   fast: false,
+  ahead: true,
 };
 
 const STORAGE_KEY = "deepreader:co-reading-trigger";
@@ -42,8 +45,9 @@ export function normalizeCoReadingTrigger(value: unknown): CoReadingTriggerSetti
       typeof record.seconds === "number" && Number.isFinite(record.seconds)
         ? Math.min(TRIGGER_SECONDS_MAX, Math.max(TRIGGER_SECONDS_MIN, Math.round(record.seconds)))
         : DEFAULT_CO_READING_TRIGGER.seconds,
-    wavy: typeof record.wavy === "boolean" ? record.wavy : DEFAULT_CO_READING_TRIGGER.wavy,
+    wavy: false,
     fast: typeof record.fast === "boolean" ? record.fast : DEFAULT_CO_READING_TRIGGER.fast,
+    ahead: typeof record.ahead === "boolean" ? record.ahead : DEFAULT_CO_READING_TRIGGER.ahead,
   };
 }
 

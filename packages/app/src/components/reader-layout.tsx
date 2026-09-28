@@ -1,3 +1,4 @@
+import { sidebarBounds } from "@/lib/sidebar-width";
 import HomeLayout from "@/components/home-layout";
 import { NotepadContainer } from "@/components/notepad";
 import NotificationDropdown from "@/components/notification-dropdown";
@@ -97,6 +98,20 @@ export default function ReaderLayout() {
   } = useLayoutStore();
   const { isDarkMode, swapSidebars } = useThemeStore();
   const { isSettingsDialogOpen, toggleSettingsDialog } = useAppSettingsStore();
+  // 量出内容区宽度，给两个侧栏限宽：平板竖屏两栏都开时右边那栏不会被挤出屏幕。
+  const mainRef = useRef<HTMLElement | null>(null);
+  const [mainWidth, setMainWidth] = useState(0);
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = Math.round(entries[0]?.contentRect.width ?? 0);
+      setMainWidth((prev) => (prev === width ? prev : width));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const bounds = sidebarBounds(mainWidth, isNotepadVisible, isChatVisible);
 
   const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showOverlay, setShowOverlay] = useState(false);
@@ -200,7 +215,7 @@ export default function ReaderLayout() {
       </div>
 
       {/* overflow-clip：内容区不许被程序滚动。平板上侧栏若比容器高，聚焦/scrollIntoView 会把整块内容顶上去，盖住各栏顶部按钮。 */}
-      <main className="relative min-h-0 flex-1 overflow-clip rounded-md">
+      <main ref={mainRef} className="relative min-h-0 flex-1 overflow-clip rounded-md">
         <div
           className="absolute inset-0"
           style={{
@@ -222,8 +237,8 @@ export default function ReaderLayout() {
                   width: 300,
                   height: "100%",
                 }}
-                minWidth={260}
-                maxWidth={500}
+                minWidth={bounds.notepad.min}
+                maxWidth={bounds.notepad.max}
                 enable={{
                   top: false,
                   right: !swapSidebars,
@@ -274,8 +289,8 @@ export default function ReaderLayout() {
                   width: 370,
                   height: "100%",
                 }}
-                minWidth={320}
-                maxWidth={580}
+                minWidth={bounds.chat.min}
+                maxWidth={bounds.chat.max}
                 enable={{
                   top: false,
                   right: swapSidebars,
@@ -330,7 +345,7 @@ export default function ReaderLayout() {
               >
                 {swapSidebars ? chatSidebar : notepadSidebar}
 
-                <div className="relative flex-1 rounded-md border shadow-around">
+                <div className="relative min-w-0 flex-1 rounded-md border shadow-around">
                   <ReaderViewer />
 
                   <div

@@ -30,7 +30,7 @@ export async function generateContextWithAI(
       };
     }
 
-    const modelInstance = createModelInstance(modelConfig.providerId, modelConfig.modelId);
+    const modelInstance = createModelInstance(modelConfig.providerId, modelConfig.modelId, { purpose: "plain" });
 
     // 构建提示词 - 后续需要通过feedback确认
     const prompt = buildContextPrompt(userQuestion, previousContext, previousAnswer);

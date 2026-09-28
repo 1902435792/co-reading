@@ -212,6 +212,15 @@ export function ReadingPageControls({
         <div>
           <Title compact={compact}>划线与高亮</Title>
           <div className="space-y-3">
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span>
+                在书上隐藏划线和批注
+                <span className="mt-1 block text-muted-foreground text-xs">
+                  只看干净的正文，所有书通用；划线、评论和 Nova 的边注都还在，书评区照常能看
+                </span>
+              </span>
+              <Switch checked={prefs.hideOnPage} onCheckedChange={(hideOnPage) => setPrefs({ hideOnPage })} />
+            </label>
             <div className="flex items-center justify-between gap-2">
               <span className="text-muted-foreground text-xs">下划线</span>
               <Segmented

@@ -6,7 +6,7 @@ import {
   useCoReadingTrigger,
 } from "@/lib/co-reading-trigger";
 import { isJevConfigured, useJevSettings } from "@/services/jev-service";
-import { Brain, Clock3, Waves, Zap } from "lucide-react";
+import { Brain, Clock3, FastForward, Zap } from "lucide-react";
 
 /** 共读触发方式：智能判断 / 固定停留秒数 / JEV 波浪线（每台设备各自保存）。 */
 export function CoReadingTriggerControls() {
@@ -60,19 +60,16 @@ export function CoReadingTriggerControls() {
       </p>
 
       <label className="flex items-center gap-2">
-        <Waves className="size-4 shrink-0 text-violet-500" />
-        <span className="flex-1">JEV 波浪线</span>
-        <Switch
-          checked={trigger.wavy && jevReady}
-          disabled={!jevReady}
-          onCheckedChange={(wavy) => setCoReadingTrigger({ wavy })}
-        />
+        <FastForward className="size-4 shrink-0 text-sky-500" />
+        <span className="flex-1">提前发给 Nova</span>
+        <Switch checked={trigger.ahead} onCheckedChange={(ahead) => setCoReadingTrigger({ ahead })} />
       </label>
       <p className="pl-6 text-[11px] text-muted-foreground leading-relaxed">
-        {jevReady
-          ? "JEV 顺带挑一两句最值得回味的，划紫色波浪线；和 Nova 的边注互不影响，点开能看到原因。"
-          : "需要先在设置里配置 JEV。"}
+        {trigger.ahead
+          ? "这一屏读完一段，就把这一屏剩下的也一起交给 Nova；模型慢时还会同时多发一批。读到那里时边注多半已经写好了。"
+          : "每段读完才交给 Nova，一次只发一批。"}
       </p>
+
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { openReadingFootprintForAnnotation } from "@/components/side-chat/co-reading-backlink";
+import { isJevPickNote } from "@/lib/co-reading-trigger";
 import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
 import { askNova } from "@/components/nova/nova-bus";
 import { getNovaExtras, useNovaExtras } from "@/components/nova/nova-extras";
@@ -197,7 +197,9 @@ const Annotator: React.FC = () => {
     const redraw = () => {
       const notes =
         store.getState().config?.booknotes?.filter((note) => note.type === "annotation" && !note.deletedAt) ?? [];
-      for (const note of notes) void view?.addAnnotation(note);
+      // 隐藏时要主动移除已经画上的（不调用 draw 不会清掉旧的）。
+      const hidden = getAnnotationPrefs().hideOnPage;
+      for (const note of notes) void view?.addAnnotation(note, hidden || isJevPickNote(note));
     };
     window.addEventListener(ANNOTATION_PREFS_EVENT, redraw);
     return () => window.removeEventListener(ANNOTATION_PREFS_EVENT, redraw);
@@ -233,7 +235,11 @@ const Annotator: React.FC = () => {
     const detail = (event as CustomEvent).detail;
     const { draw, annotation, doc, range } = detail;
     const { style, color } = annotation as BookNote;
+    // JEV 波浪线已停用：以前划的也不再画出来。
+    if (isJevPickNote(annotation as BookNote)) return;
     const prefs = getAnnotationPrefs();
+    // 「在书上隐藏划线和批注」打开时什么都不画（数据还在，书评区照常显示）。
+    if (prefs.hideOnPage) return;
     const hexColor = resolveAnnotationColor(color, prefs, HIGHLIGHT_COLOR_HEX);
     if ((annotation as BookNote).author === "ai" && getNovaExtras().aiNoteStyle === "ink") {
       const node = range.startContainer;
@@ -284,17 +290,8 @@ const Annotator: React.FC = () => {
     markAnnotationTapped();
 
     if (annotation.author === "ai") {
-      // 左侧批注栏高亮 + 右侧阅读地图联动
+      // 只在左侧书评区定位到这条；不再联动打开右侧栏（主人觉得多余）。
       useLayoutStore.getState().openNotepadAnnotation(annotation.id);
-      const opened = openReadingFootprintForAnnotation({
-        bookId,
-        annotation,
-        setPendingReadingFootprint: store.getState().setPendingReadingFootprint,
-        eventTarget: typeof window !== "undefined" ? window : undefined,
-      });
-      if (opened) {
-        useLayoutStore.setState({ isChatVisible: true });
-      }
       return;
     }
 

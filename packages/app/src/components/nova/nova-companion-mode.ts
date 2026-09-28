@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-/** full = 形象＋气泡，bubble = 只要气泡，off = 关闭。 */
-export type NovaCompanionMode = "full" | "bubble" | "off";
+/** full = 形象＋气泡，figure = 只要形象（不主动冒气泡），bubble = 只要气泡，off = 关闭。 */
+export type NovaCompanionMode = "full" | "figure" | "bubble" | "off";
 
 const STORAGE_KEY = "deepreader:nova-companion-mode";
 const CHANGE_EVENT = "deepreader:nova-companion-mode-change";
@@ -9,7 +9,7 @@ const CHANGE_EVENT = "deepreader:nova-companion-mode-change";
 export function getNovaCompanionMode(): NovaCompanionMode {
   try {
     const value = window.localStorage.getItem(STORAGE_KEY);
-    return value === "bubble" || value === "off" ? value : "full";
+    return value === "figure" || value === "bubble" || value === "off" ? value : "full";
   } catch {
     return "full";
   }

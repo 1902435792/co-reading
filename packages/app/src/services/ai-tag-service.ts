@@ -39,7 +39,7 @@ export async function generateTagsWithAI(
     }
 
     // 创建模型实例
-    const modelInstance = createModelInstance(modelConfig.providerId, modelConfig.modelId);
+    const modelInstance = createModelInstance(modelConfig.providerId, modelConfig.modelId, { purpose: "plain" });
 
     // 构建提示词
     const existingTagsText =

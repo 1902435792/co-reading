@@ -22,6 +22,10 @@ const SUPPLEMENTAL_BUDGET =
   RECENT_BLOCK_BUDGET;
 
 export const CO_READING_BATCH_MAX_BLOCKS = 12;
+/** 模型慢时最多同时进行的批次。 */
+export const CO_READING_MAX_CONCURRENT_RUNS = 2;
+/** 上一批等了这么久还没回来，才允许并发下一批。 */
+export const CO_READING_CONCURRENT_AFTER_MS = 15_000;
 
 const CJK_PATTERN = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/u;
 const LATIN_PATTERN = /[\p{L}\p{N}]/u;

@@ -128,6 +128,8 @@ export interface AnnotationPrefs {
   underlineWeight: UnderlineWeight;
   highlightStrength: HighlightStrength;
   palette: AnnotationPalette;
+  /** 在书页上隐藏所有划线、高亮和 Nova 墨点（数据不删，书评区照常能看）。所有书通用。 */
+  hideOnPage: boolean;
 }
 
 export const DEFAULT_ANNOTATION_PREFS: AnnotationPrefs = {
@@ -135,6 +137,7 @@ export const DEFAULT_ANNOTATION_PREFS: AnnotationPrefs = {
   underlineWeight: "thin",
   highlightStrength: "soft",
   palette: "soft",
+  hideOnPage: false,
 };
 
 export const UNDERLINE_STYLE_LABELS: Record<UnderlineStyle, string> = {
@@ -186,6 +189,7 @@ export function parseAnnotationPrefs(raw: string | null): AnnotationPrefs {
     underlineWeight: pick(data.underlineWeight, UNDERLINE_WEIGHT_LABELS, d.underlineWeight),
     highlightStrength: pick(data.highlightStrength, HIGHLIGHT_STRENGTH_LABELS, d.highlightStrength),
     palette: pick(data.palette, PALETTE_LABELS, d.palette),
+    hideOnPage: data.hideOnPage === true,
   };
 }
 

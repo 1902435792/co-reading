@@ -1,5 +1,7 @@
 import {
   CO_READING_BATCH_MAX_BLOCKS,
+  CO_READING_CONCURRENT_AFTER_MS,
+  CO_READING_MAX_CONCURRENT_RUNS,
   buildCoReadingBatch,
   mergeTrackedCoReadingState,
   sanitizeCoReadingError,
@@ -68,6 +70,7 @@ interface TrackedBlock extends CoReadingBlockUpsert {
 interface OrdinaryCoReadingRun {
   generation: number;
   controller: AbortController;
+  startedAt: number;
   /** 本批认领的正文块（可以跨多个页面焦点）。 */
   blockKeys: string[];
 }
@@ -105,11 +108,22 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
   const trackedRef = useRef(new Map<string, TrackedBlock>());
   const observedAtRef = useRef(new Map<string, number>());
   const dirtyRef = useRef(new Set<string>());
-  const processingRef = useRef(false);
   const runBlockedRef = useRef(false);
   const samplingGenerationRef = useRef(0);
   const workerGenerationRef = useRef(0);
-  const activeRunRef = useRef<OrdinaryCoReadingRun | null>(null);
+  /** 正在进行的批次：模型慢时允许并发（见 canStartRun）。 */
+  const activeRunsRef = useRef(new Map<number, OrdinaryCoReadingRun>());
+  /**
+   * 动态并发：没有进行中的批次，或者进行中的都已经等了 15 秒以上（模型慢，比如 -high），
+   * 就可以再发一批，最多同时 2 批。模型快时仍然一批一批来。
+   */
+  const canStartRun = useCallback(() => {
+    const runs = [...activeRunsRef.current.values()];
+    if (runs.length === 0) return true;
+    if (runs.length >= CO_READING_MAX_CONCURRENT_RUNS) return false;
+    const now = performance.now();
+    return runs.every((run) => now - run.startedAt >= CO_READING_CONCURRENT_AFTER_MS);
+  }, []);
   const blockedFocusKeyRef = useRef<string | null>(null);
   const blockedAtRef = useRef(0);
   /** 最近一次翻页/滑动（可见段落集合变化）的时间，用来判断「停下来了」。 */
@@ -195,9 +209,9 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
 
   /** 只在共读被暂停/关闭时取消；翻页、滑动不再打断正在进行的请求。 */
   const cancelActiveRun = useCallback((reason = "共读已暂停") => {
-    const active = activeRunRef.current;
-    if (!active || active.controller.signal.aborted) return;
-    active.controller.abort(new CoReadingFocusCancelledError(reason));
+    for (const active of activeRunsRef.current.values()) {
+      if (!active.controller.signal.aborted) active.controller.abort(new CoReadingFocusCancelledError(reason));
+    }
   }, []);
 
   const flush = useCallback(async () => {
@@ -362,14 +376,16 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
   const drainQueue = useCallback(async () => {
     const currentSnapshot = store.getState().coReadingSnapshot;
     if (!currentSnapshot) return;
-    const queued = getQueuedBlocks(currentSnapshot);
+    // 别的批次正在处理的段落不再重复发。
+    const busyKeys = new Set([...activeRunsRef.current.values()].flatMap((run) => run.blockKeys));
+    const queued = getQueuedBlocks(currentSnapshot).filter((block) => !busyKeys.has(block.blockKey));
     if (
       !shouldDrainCoReadingQueue({
         status: currentSnapshot.settings.status,
         queuedCount: queued.length,
         modelReady: Boolean(coReadingModel),
         runBlocked: isRunBlocked(runBlockedRef, blockedAtRef),
-        processing: processingRef.current,
+        processing: !canStartRun(),
       })
     )
       return;
@@ -407,16 +423,11 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
 
     const generation = ++workerGenerationRef.current;
     const controller = new AbortController();
-    activeRunRef.current = { generation, controller, blockKeys };
-    processingRef.current = true;
+    activeRunsRef.current.set(generation, { generation, controller, blockKeys, startedAt: performance.now() });
 
     const ownsRun = () => {
-      const active = activeRunRef.current;
-      return (
-        mountedRef.current &&
-        active?.generation === generation &&
-        active.controller === controller
-      );
+      const active = activeRunsRef.current.get(generation);
+      return mountedRef.current && active?.controller === controller;
     };
     const assertRunning = () => {
       if (!ownsRun() || controller.signal.aborted) {
@@ -623,12 +634,12 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
       }
     } finally {
       if (ownsRun()) {
-        activeRunRef.current = null;
-        processingRef.current = false;
+        activeRunsRef.current.delete(generation);
+        const stillRunning = [...activeRunsRef.current.values()];
         store.getState().setCoReadingRuntime({
-          isProcessing: false,
-          processingBlockCount: 0,
-          processingStartedAt: null,
+          isProcessing: stillRunning.length > 0,
+          processingBlockCount: stillRunning.reduce((sum, run) => sum + run.blockKeys.length, 0),
+          processingStartedAt: stillRunning.length > 0 ? Date.now() : null,
           runBlocked: isRunBlocked(runBlockedRef, blockedAtRef),
         });
         try {
@@ -641,7 +652,7 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
               queuedCount: getQueuedBlocks(latest).length,
               modelReady: Boolean(coReadingModel),
               runBlocked: isRunBlocked(runBlockedRef, blockedAtRef),
-              processing: processingRef.current,
+              processing: !canStartRun(),
             })
           ) {
             window.setTimeout(() => void drainQueue(), 0);
@@ -656,6 +667,7 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
   }, [
     addJevWavyNotes,
     bookId,
+    canStartRun,
     coReadingModel,
     failClaimedBlocks,
     getQueuedBlocks,
@@ -677,11 +689,10 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
     });
     return () => {
       mountedRef.current = false;
-      const active = activeRunRef.current;
-      if (active && !active.controller.signal.aborted) {
-        active.controller.abort(
-          new CoReadingFocusCancelledError("阅读器已关闭")
-        );
+      for (const active of activeRunsRef.current.values()) {
+        if (!active.controller.signal.aborted) {
+          active.controller.abort(new CoReadingFocusCancelledError("阅读器已关闭"));
+        }
       }
     };
   }, [refreshSnapshot, store]);
@@ -869,6 +880,17 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
           stillReading = true;
         }
       }
+      // 提前发：这一屏有段落读完了，就把这一屏还没读到的也一起排队，
+      // 等你读到那里时 Nova 的边注多半已经写好了（慢模型也不怕）。
+      if (unlocked && trigger.ahead) {
+        for (const block of visibleBlocksRef.current) {
+          if (block.status !== "tracking") continue;
+          block.status = "queued";
+          block.unlockedAt ??= unlockedAt;
+          dirtyRef.current.add(block.blockKey);
+          stillReading = false;
+        }
+      }
       updateRuntime();
 
       // 队列 = 数据库里排队的 + 本地刚解锁还没写入的。
@@ -896,7 +918,7 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
         if (block.unlockedAt) oldest = Math.min(oldest, block.unlockedAt);
       }
       const dispatch =
-        !processingRef.current &&
+        canStartRun() &&
         shouldDispatchQueue({
           queuedCount: pending.size,
           queuedChars,
@@ -920,7 +942,7 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
       }
     }, TICK_MS);
     return () => window.clearInterval(interval);
-  }, [drainQueue, flush, getQueuedBlocks, isVisible, store, updateRuntime]);
+  }, [canStartRun, drainQueue, flush, getQueuedBlocks, isVisible, store, updateRuntime]);
 
   useEffect(() => {
     const interval = window.setInterval(() => void flush(), FLUSH_MS);

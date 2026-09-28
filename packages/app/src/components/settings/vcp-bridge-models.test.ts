@@ -51,3 +51,8 @@ test("bridgeModelIdFor fast drops -high", () => {
   assert.equal(bridgeModelIdFor("gemini-3.8-flash", "coreading", { fast: true }), "coreading-lite/gemini-3.8-flash");
   assert.equal(bridgeModelIdFor("snow/x-high", "coreading", { fast: true }), "snow/x");
 });
+
+test("后台小请求走纯净 Profile，不注入人格", () => {
+  assert.equal(bridgeModelIdFor("gemini-3.8-flash-high", "plain"), "deepreader-plain/gemini-3.8-flash-high");
+  assert.equal(bridgeModelIdFor("reading/gemini-3.8-flash", "plain"), "deepreader-plain/gemini-3.8-flash");
+});

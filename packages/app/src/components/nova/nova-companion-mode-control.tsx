@@ -2,6 +2,7 @@ import { type NovaCompanionMode, setNovaCompanionMode, useNovaCompanionMode } fr
 
 const OPTIONS: { value: NovaCompanionMode; label: string }[] = [
   { value: "full", label: "形象＋气泡" },
+  { value: "figure", label: "只要形象" },
   { value: "bubble", label: "只要气泡" },
   { value: "off", label: "关闭" },
 ];

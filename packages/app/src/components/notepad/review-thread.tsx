@@ -1,6 +1,5 @@
 import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
 import { isJevPickNote } from "@/lib/co-reading-trigger";
-import { openReadingFootprintForAnnotation } from "@/components/side-chat/co-reading-backlink";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,7 +17,6 @@ import {
 } from "@/lib/comment-review";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
 import { HIGHLIGHT_COLOR_HEX } from "@/services/constants";
-import { useLayoutStore } from "@/store/layout-store";
 import type { BookNote } from "@/types/book";
 import { ask } from "@tauri-apps/plugin-dialog";
 import dayjs from "dayjs";
@@ -94,8 +92,6 @@ export const ReviewThread = ({
   const { top, replies } = thread;
   const kind = threadKind(top);
   const view = useReaderStore((state) => state.view);
-  const bookId = useReaderStore((state) => state.bookId);
-  const setPendingReadingFootprint = useReaderStore((state) => state.setPendingReadingFootprint);
 
   const [expanded, setExpanded] = useState(false);
   const [composing, setComposing] = useState(false);
@@ -121,15 +117,9 @@ export const ReviewThread = ({
 
   const jumpToPassage = useCallback(() => {
     if (kind === "book") return;
+    // 只跳到原文；不再联动打开右侧栏。
     if (view && top.cfi) view.goTo(top.cfi);
-    const opened = openReadingFootprintForAnnotation({
-      bookId: bookId ?? undefined,
-      annotation: top,
-      setPendingReadingFootprint: setPendingReadingFootprint ?? undefined,
-      eventTarget: typeof window !== "undefined" ? window : undefined,
-    });
-    if (opened) useLayoutStore.setState({ isChatVisible: true });
-  }, [bookId, kind, setPendingReadingFootprint, top, view]);
+  }, [kind, top, view]);
 
   const askNova = useCallback(
     async (base: Pick<AnnotationThread, "top" | "replies"> = thread) => {
