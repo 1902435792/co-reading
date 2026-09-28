@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useProviderStore } from "@/store/provider-store";
 import { fetch as fetchTauri } from "@tauri-apps/plugin-http";
+import { isVcpBridgeUrl } from "@/components/nova/nova-memory";
 import { CheckCircle2, CircleAlert, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { openSettings } from "./open-settings";
@@ -36,7 +37,7 @@ type CheckState =
 
 export default function CoReadingSettings() {
   const { modelProviders } = useProviderStore();
-  const bridgeProviders = modelProviders.filter((provider) => /:3100(\/|$)/.test(provider.baseUrl ?? ""));
+  const bridgeProviders = modelProviders.filter((provider) => isVcpBridgeUrl(provider.baseUrl));
   const bridgeModelIds = bridgeProviders.flatMap((provider) =>
     (provider.models ?? []).filter((model) => model.active !== false).map((model) => model.id),
   );

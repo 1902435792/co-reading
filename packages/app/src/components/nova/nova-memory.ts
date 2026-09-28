@@ -43,7 +43,14 @@ export function diaryProposalText(
 }
 
 export function isVcpBridgeUrl(url?: string | null): boolean {
-  return /:3100(\/|$)/.test(url ?? "");
+  const value = url ?? "";
+  if (/:3100(\/|$)/.test(value)) return true;
+  // 经 Cloudflare 隧道暴露的 Bridge（如 https://vcp.example.com/v1）：隧道不带 3100 端口号，按 vcp. 子域名识别
+  try {
+    return /^vcp\./i.test(new URL(value).hostname);
+  } catch {
+    return false;
+  }
 }
 
 /** 这些 Bridge Profile 会接入 OneRing，并带着写日记的指南，不适合批量的自动共读。 */

@@ -45,6 +45,11 @@ test("diaryProposalText mentions the count", () => {
 test("isVcpBridgeUrl", () => {
   assert.equal(isVcpBridgeUrl("http://127.0.0.1:3100/v1"), true);
   assert.equal(isVcpBridgeUrl("http://localhost:3100"), true);
+  assert.equal(isVcpBridgeUrl("https://vcp.example.com/v1"), true);
+  assert.equal(isVcpBridgeUrl("https://VCP.example.com"), true);
+  assert.equal(isVcpBridgeUrl("https://api.openai.com/v1"), false);
+  assert.equal(isVcpBridgeUrl("https://myvcp.example.com/v1"), false);
+  assert.equal(isVcpBridgeUrl("not a url"), false);
   assert.equal(isVcpBridgeUrl("https://api.openai.com/v1"), false);
   assert.equal(isVcpBridgeUrl(undefined), false);
 });
