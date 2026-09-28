@@ -1,10 +1,10 @@
-import type { BookNote } from "@/types/book";
+import type { BookNote, BookNoteType } from "@/types/book";
 import { invoke } from "@tauri-apps/api/core";
 
 // BookNote 创建数据类型
 export interface BookNoteCreateData {
   bookId: string;
-  type: "bookmark" | "annotation" | "excerpt";
+  type: BookNoteType;
   cfi: string;
   text?: string;
   style?: "highlight" | "underline" | "squiggly";
@@ -20,7 +20,7 @@ export interface BookNoteCreateData {
 
 // BookNote 更新数据类型
 export interface BookNoteUpdateData {
-  type?: "bookmark" | "annotation" | "excerpt";
+  type?: BookNoteType;
   cfi?: string;
   text?: string;
   style?: "highlight" | "underline" | "squiggly";

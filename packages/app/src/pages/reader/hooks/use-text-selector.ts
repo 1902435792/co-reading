@@ -22,6 +22,13 @@ export const useTextSelector = (
   const isPopupVisible = useRef(false);
   const popupShowTime = useRef<number>(0);
   const POPUP_DEBOUNCE_TIME = 300;
+  // 刚点中已有标注的时间：随后到达的单击消息不再触发翻页（触屏上单击消息可能早于弹窗渲染）
+  const annotationTapTime = useRef<number>(0);
+  const ANNOTATION_TAP_WINDOW = 800;
+
+  const markAnnotationTapped = () => {
+    annotationTapTime.current = Date.now();
+  };
 
   const isValidSelection = (sel: Selection) => {
     return sel && sel.toString().trim().length > 0 && sel.rangeCount > 0;
@@ -75,6 +82,10 @@ export const useTextSelector = (
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
     const handleSingleClick = (): boolean => {
+      if (Date.now() - annotationTapTime.current < ANNOTATION_TAP_WINDOW) {
+        annotationTapTime.current = 0;
+        return true;
+      }
       if (isPopupVisible.current) {
         const timeSincePopupShow = Date.now() - popupShowTime.current;
         if (timeSincePopupShow < POPUP_DEBOUNCE_TIME) {
@@ -99,5 +110,6 @@ export const useTextSelector = (
     handleScroll,
     handleMouseUp,
     handleShowPopup,
+    markAnnotationTapped,
   };
 };

@@ -328,7 +328,7 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
         )
         .sort((a, b) => (b.processedAt ?? 0) - (a.processedAt ?? 0));
       const aiNotes = (store.getState().config?.booknotes ?? [])
-        .filter((note) => note.author === "ai")
+        .filter((note) => note.type === "annotation" && note.author === "ai")
         .sort((a, b) => b.createdAt - a.createdAt)
         .map((note) => `“${note.text ?? ""}” ${note.note}`);
       const batch = buildCoReadingBatch({

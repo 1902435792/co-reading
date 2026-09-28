@@ -310,7 +310,7 @@ export function useCoReadingRange(bookId: string): void {
               .slice(-6)
               .map(toDecisionBlock);
             const recentAnnotations = (await getBookNotes(bookId))
-              .filter((note) => note.author === "ai")
+              .filter((note) => note.type === "annotation" && note.author === "ai")
               .slice(-8)
               .map((note) => `“${note.text ?? ""}” ${note.note}`);
             await assertRangeTaskRunning();

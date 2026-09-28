@@ -310,7 +310,8 @@ export const useAnnotator = ({ bookId }: UseAnnotatorProps) => {
   const currentNotes = useCallback(() => store.getState().config?.booknotes ?? [], [store]);
   const linkedRepliesOf = useCallback(
     (noteId: string) =>
-      currentNotes().filter((note) => note.author === "ai" && note.sourceNoteId === noteId && !note.deletedAt),
+      // 挂在这条划线下的全部楼层（Nova 回评 + 书评区回复）：删除划线时后端会一并删掉，撤销时要一起恢复
+      currentNotes().filter((note) => note.sourceNoteId === noteId && !note.deletedAt),
     [currentNotes],
   );
 
@@ -318,7 +319,7 @@ export const useAnnotator = ({ bookId }: UseAnnotatorProps) => {
     async (targets: BookNote[]) => {
       for (const target of targets) {
         await deleteBookNote(target.id);
-        view?.addAnnotation(target, true);
+        if (target.type === "annotation") view?.addAnnotation(target, true);
       }
       const ids = new Set(targets.map((target) => target.id));
       await commitNotes(currentNotes().filter((note) => !ids.has(note.id)));
@@ -331,7 +332,7 @@ export const useAnnotator = ({ bookId }: UseAnnotatorProps) => {
       const recreate = async (note: BookNote, sourceNoteId?: string | null) => {
         const created = await createBookNote({
           bookId,
-          type: "annotation",
+          type: note.type === "review" ? "review" : "annotation",
           cfi: note.cfi,
           text: note.text,
           style: note.style,
@@ -341,7 +342,7 @@ export const useAnnotator = ({ bookId }: UseAnnotatorProps) => {
           note: note.note,
           context: note.context,
         });
-        view?.addAnnotation(created);
+        if (created.type === "annotation") view?.addAnnotation(created);
         return created;
       };
       const main = await recreate(change.note);

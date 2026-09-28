@@ -53,13 +53,20 @@ export function saveReviewMode(noteId: string, mode: CommentReviewMode, storage 
   storage.setItem(REVIEW_MODES_KEY, JSON.stringify(Object.fromEntries(entries)));
 }
 
-// ---------- 批注栏：按线程组织（我的划线/评论 + Nova 的回评） ----------
+// ---------- 书评区：按帖子组织（楼主 = 划线 / Nova 共读边注 / 整书书评，楼层 = 回复） ----------
 
 export type NotepadOrder = "newest" | "position";
 
+/** 楼层回复与整书书评用 review 类型存，不画到书页上。 */
+export const REVIEW_NOTE_TYPE = "review" as const;
+
+export function isBookReviewPost(note: BookNote): boolean {
+  return note.type === REVIEW_NOTE_TYPE && !note.sourceNoteId;
+}
+
 export interface AnnotationThread {
   top: BookNote;
-  /** Nova 针对这条划线的回评（sourceNoteId 指向 top）。 */
+  /** 楼层：Nova 回评与双方的楼中回复（sourceNoteId 指向 top），按时间正序。 */
   replies: BookNote[];
   /** 线程里最近一次变动的时间，「最新在上」按它排序。 */
   latest: number;
@@ -76,7 +83,7 @@ export function buildAnnotationThreads(annotations: readonly BookNote[], order: 
   const replies = new Map<string, BookNote[]>();
   const tops: BookNote[] = [];
   for (const note of annotations) {
-    if (note.author === "ai" && note.sourceNoteId && ids.has(note.sourceNoteId)) {
+    if (note.sourceNoteId && ids.has(note.sourceNoteId)) {
       const list = replies.get(note.sourceNoteId) ?? [];
       list.push(note);
       replies.set(note.sourceNoteId, list);
@@ -97,6 +104,30 @@ export function buildAnnotationThreads(annotations: readonly BookNote[], order: 
       .map(({ thread }) => thread);
   }
   return threads;
+}
+
+export interface ThreadTurn {
+  speaker: "reader" | "nova";
+  text: string;
+}
+
+/**
+ * 把一个帖子整理成对话记录，给 Nova 接着回复用。楼主是只划线没写评论时，用「（划了这句）」占位；
+ * 空楼层跳过；只保留最近 maxTurns 楼（楼主始终保留）。
+ */
+export function threadTranscript(thread: Pick<AnnotationThread, "top" | "replies">, maxTurns = 12): ThreadTurn[] {
+  const toTurn = (note: BookNote): ThreadTurn | null => {
+    const text = note.note?.trim() ?? "";
+    const speaker = note.author === "ai" ? "nova" : "reader";
+    if (text) return { speaker, text };
+    return note === thread.top && note.type === "annotation" && speaker === "reader"
+      ? { speaker, text: "（划了这句）" }
+      : null;
+  };
+  const first = toTurn(thread.top);
+  const rest = thread.replies.map(toTurn).filter((turn): turn is ThreadTurn => turn !== null);
+  const tail = rest.slice(-Math.max(0, maxTurns - (first ? 1 : 0)));
+  return first ? [first, ...tail] : tail;
 }
 
 const NOTEPAD_ORDER_KEY = "deepreader:notepad-order";

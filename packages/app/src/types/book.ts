@@ -1,5 +1,6 @@
 export type BookFormat = "EPUB" | "PDF" | "MOBI" | "CBZ" | "FB2" | "FBZ";
-export type BookNoteType = "bookmark" | "annotation" | "excerpt";
+/** review：书评区的帖子与楼层（整书书评、楼中回复），不画到书页上。 */
+export type BookNoteType = "bookmark" | "annotation" | "excerpt" | "review";
 export type HighlightStyle = "highlight" | "underline" | "squiggly";
 export type HighlightColor = "red" | "yellow" | "green" | "blue" | "violet";
 

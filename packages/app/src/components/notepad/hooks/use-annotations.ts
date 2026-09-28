@@ -1,8 +1,13 @@
 import { sortAnnotationsByReadingOrder } from "@/lib/annotation-order";
-import { REVIEW_MODE_LABEL } from "@/lib/comment-review";
+import { type AnnotationThread, REVIEW_MODE_LABEL, REVIEW_NOTE_TYPE } from "@/lib/comment-review";
 import { deleteBookNote, getBookNotes } from "@/services/book-note-service";
 import { useReaderStoreApi } from "@/pages/reader/components/reader-provider";
-import { generateCommentReview } from "@/services/comment-review-service";
+import {
+  generateCommentReview,
+  generateThreadReply,
+  postBookReview,
+  postThreadReply,
+} from "@/services/comment-review-service";
 import type { BookNote } from "@/types/book";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
@@ -28,7 +33,10 @@ export const useAnnotations = ({ bookId }: UseAnnotationsProps = {}) => {
       if (!bookId) return [];
       const bookNotes = await getBookNotes(bookId);
       // 阅读位置正序：前页/前段在上；生成时间只用于位置不可区分时的稳定兜底。
-      return sortAnnotationsByReadingOrder(bookNotes.filter((note) => note.type === "annotation" && !note.deletedAt));
+      // 书评区的帖子与楼层（review 类型）也在这里一起取出。
+      return sortAnnotationsByReadingOrder(
+        bookNotes.filter((note) => (note.type === "annotation" || note.type === REVIEW_NOTE_TYPE) && !note.deletedAt),
+      );
     },
     enabled: !!bookId,
   });
@@ -49,6 +57,30 @@ export const useAnnotations = ({ bookId }: UseAnnotationsProps = {}) => {
     [bookId, queryClient, readerStore],
   );
 
+  const handlePostBookReview = useCallback(
+    async (text: string): Promise<BookNote> => {
+      if (!bookId) throw new Error("当前书籍尚未就绪");
+      return postBookReview({ bookId, text, readerStore, queryClient });
+    },
+    [bookId, queryClient, readerStore],
+  );
+
+  const handlePostReply = useCallback(
+    async (top: BookNote, text: string): Promise<BookNote> => {
+      if (!bookId) throw new Error("当前书籍尚未就绪");
+      return postThreadReply({ bookId, top, text, readerStore, queryClient });
+    },
+    [bookId, queryClient, readerStore],
+  );
+
+  const handleNovaThreadReply = useCallback(
+    async (thread: Pick<AnnotationThread, "top" | "replies">): Promise<BookNote> => {
+      if (!bookId) throw new Error("当前书籍尚未就绪");
+      return generateThreadReply({ bookId, thread, readerStore, queryClient });
+    },
+    [bookId, queryClient, readerStore],
+  );
+
   // 删除标注
   const handleDeleteAnnotation = useCallback(
     async (annotationId: string) => {
@@ -62,14 +94,20 @@ export const useAnnotations = ({ bookId }: UseAnnotationsProps = {}) => {
         await deleteBookNote(annotationId);
         if (readerIsCurrentBook) {
           const view = readerStore.getState().view;
-          for (const note of removed) view?.addAnnotation(note, true);
           const nextNotes = currentNotes.filter(
             (note) => note.id !== annotationId && note.sourceNoteId !== annotationId,
           );
+          // 书页上的标注按 cfi 区分：只擦掉真正画过的（annotation），再把同一位置剩下的重画回来
+          const drawnRemoved = removed.filter((note) => note.type === "annotation");
+          for (const note of drawnRemoved) view?.addAnnotation(note, true);
+          const erasedCfis = new Set(drawnRemoved.map((note) => note.cfi));
+          for (const note of nextNotes) {
+            if (note.type === "annotation" && !note.deletedAt && erasedCfis.has(note.cfi)) view?.addAnnotation(note);
+          }
           const updatedConfig = readerStore.getState().updateBooknotes(nextNotes);
           if (updatedConfig) await readerStore.getState().saveConfig(updatedConfig);
         }
-        toast.success("标注删除成功");
+        toast.success("已删除");
 
         // 刷新标注列表
         await queryClient.invalidateQueries({
@@ -91,5 +129,8 @@ export const useAnnotations = ({ bookId }: UseAnnotationsProps = {}) => {
     status,
     handleDeleteAnnotation,
     handleGenerateAiReview,
+    handlePostBookReview,
+    handlePostReply,
+    handleNovaThreadReply,
   };
 };

@@ -6,6 +6,7 @@ import type {
   CoReadingReviewInput,
   CoReadingReviewResult,
   CoReadingSettings,
+  CoReadingThreadReplyInput,
 } from "@/types/co-reading";
 import { generateObject } from "ai";
 import {
@@ -149,6 +150,51 @@ export async function requestCoReadingReview(
         prompt,
         maxOutputTokens: 900,
         temperature: 0.3,
+        maxRetries: 0,
+        abortSignal,
+      });
+      return result.object;
+    },
+    parseCoReadingReviewResultText,
+    CO_READING_REQUEST_TIMEOUT_MS
+  );
+}
+
+/** 书评区：Nova 结合前面几楼，接着最后一楼回复。复用回评的 {review} 结构。 */
+export async function requestCoReadingThreadReply(
+  input: CoReadingThreadReplyInput,
+  settings?: Pick<CoReadingSettings, "modelProviderId" | "modelId"> | null
+): Promise<CoReadingReviewResult> {
+  if (input.turns.length === 0) throw new Error("这个帖子还没有内容");
+  const model = resolveCoReadingAgentModel(settings);
+  const book = [input.bookTitle.trim() || "（未知书名）", input.bookAuthor.trim()].filter(Boolean).join(" / ");
+  const floors = input.turns
+    .map((turn, index) => `#${index + 1} ${turn.speaker === "nova" ? "Nova" : "读者"}：${turn.text.slice(0, 1_500)}`)
+    .join("\n");
+  const prompt = [
+    `BOOK：${book}`,
+    input.quote.trim()
+      ? [
+          `QUOTED_TEXT：\n${input.quote.slice(0, 3_000)}`,
+          `CONTEXT_BEFORE：\n${input.contextBefore.slice(-1_500) || "（无）"}`,
+          `CONTEXT_AFTER：\n${input.contextAfter.slice(0, 1_500) || "（无）"}`,
+        ].join("\n\n")
+      : "QUOTED_TEXT：（整本书的书评帖，不针对具体句子）",
+    `ROLLING_SUMMARY：\n${input.rollingSummary.slice(0, 2_000) || "（无）"}`,
+    `THREAD（楼层，按时间正序）：\n${floors}`,
+  ].join("\n\n");
+
+  return requestCoReadingStructuredObject(
+    async (abortSignal) => {
+      const result = await generateObject({
+        model,
+        schema: coReadingReviewResultSchema,
+        mode: "json",
+        system:
+          "你是正在与用户共读的 Nova，现在在这本书的书评区里和读者一楼一楼地聊。接着 THREAD 的最后一楼回复：直接回应对方刚说的话，可以追问、补充、提出不同看法，结合原文和前面几楼，不要重复自己说过的内容，不剧透读者还没读到的后文，像朋友聊天一样自然，一般 2–5 句。只返回严格 JSON：{review}。",
+        prompt,
+        maxOutputTokens: 700,
+        temperature: 0.5,
         maxRetries: 0,
         abortSignal,
       });

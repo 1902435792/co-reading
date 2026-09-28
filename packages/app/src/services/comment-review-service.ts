@@ -1,8 +1,15 @@
-import { type CommentReviewMode, guessReviewMode, saveReviewMode } from "@/lib/comment-review";
 import { validateCoReadingReviewResult } from "@/lib/co-reading-core";
+import {
+  type AnnotationThread,
+  type CommentReviewMode,
+  REVIEW_NOTE_TYPE,
+  guessReviewMode,
+  saveReviewMode,
+  threadTranscript,
+} from "@/lib/comment-review";
 import type { useReaderStoreApi } from "@/pages/reader/components/reader-provider";
 import { createBookNote, getBookNotes, updateBookNote } from "@/services/book-note-service";
-import { requestCoReadingReview } from "@/services/co-reading-ai-service";
+import { requestCoReadingReview, requestCoReadingThreadReply } from "@/services/co-reading-ai-service";
 import { getCoReadingSnapshot } from "@/services/co-reading-service";
 import { chooseCommentReviewModeWithJev } from "@/services/jev-service";
 import type { BookNote } from "@/types/book";
@@ -19,7 +26,7 @@ export interface CommentReviewOutcome {
 }
 
 export function canReviewNote(note: BookNote): boolean {
-  return note.author !== "ai" && !note.deletedAt && Boolean(note.text?.trim());
+  return note.type === "annotation" && note.author !== "ai" && !note.deletedAt && Boolean(note.text?.trim());
 }
 
 /**
@@ -48,9 +55,11 @@ export async function generateCommentReview({
   const mode = jevMode ?? guessed;
   const decidedBy: CommentReviewOutcome["decidedBy"] = jevMode ? "jev" : guessed ? "guess" : "none";
 
-  const existing = notes.find((note) => note.author === "ai" && note.sourceNoteId === source.id && !note.deletedAt);
+  const existing = notes.find(
+    (note) => note.type === "annotation" && note.author === "ai" && note.sourceNoteId === source.id && !note.deletedAt,
+  );
   const recentAiAnnotations = notes
-    .filter((note) => note.author === "ai" && !note.deletedAt && note.id !== existing?.id)
+    .filter((note) => note.type === "annotation" && note.author === "ai" && !note.deletedAt && note.id !== existing?.id)
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 8)
     .map((note) => `“${note.text ?? ""}” ${note.note}`);
@@ -97,4 +106,129 @@ export async function generateCommentReview({
   }
   await queryClient.invalidateQueries({ queryKey: ["annotations", bookId] });
   return { saved, existed: Boolean(existing), mode, decidedBy };
+}
+
+// ---------- 书评区：整书书评、楼中回复、Nova 接着回 ----------
+
+/** 书评区的新笔记（review 类型，不画到书页上）同步进阅读器配置并刷新列表。 */
+async function commitReviewNote(
+  bookId: string,
+  saved: BookNote,
+  readerStore: ReaderStoreApi,
+  queryClient: QueryClient,
+) {
+  const readerState = readerStore.getState();
+  if (readerState.bookId === bookId) {
+    const currentNotes = readerState.config?.booknotes ?? [];
+    const nextNotes = currentNotes.some((note) => note.id === saved.id)
+      ? currentNotes.map((note) => (note.id === saved.id ? saved : note))
+      : [...currentNotes, saved];
+    const updatedConfig = readerState.updateBooknotes(nextNotes);
+    if (updatedConfig) await readerState.saveConfig(updatedConfig);
+  }
+  await queryClient.invalidateQueries({ queryKey: ["annotations", bookId] });
+}
+
+/** 发一条整本书的书评帖（不针对具体句子），位置记为发帖时读到的地方。 */
+export async function postBookReview({
+  bookId,
+  text,
+  readerStore,
+  queryClient,
+}: {
+  bookId: string;
+  text: string;
+  readerStore: ReaderStoreApi;
+  queryClient: QueryClient;
+}): Promise<BookNote> {
+  const content = text.trim();
+  if (!content) throw new Error("书评内容不能为空");
+  const readerState = readerStore.getState();
+  const cfi = readerState.bookId === bookId ? (readerState.progress?.location ?? "") : "";
+  const saved = await createBookNote({
+    bookId,
+    type: REVIEW_NOTE_TYPE,
+    cfi,
+    text: "",
+    author: "human",
+    sourceNoteId: null,
+    note: content,
+  });
+  await commitReviewNote(bookId, saved, readerStore, queryClient);
+  return saved;
+}
+
+/** 在帖子里回一楼（读者自己）。 */
+export async function postThreadReply({
+  bookId,
+  top,
+  text,
+  readerStore,
+  queryClient,
+}: {
+  bookId: string;
+  top: BookNote;
+  text: string;
+  readerStore: ReaderStoreApi;
+  queryClient: QueryClient;
+}): Promise<BookNote> {
+  const content = text.trim();
+  if (!content) throw new Error("回复内容不能为空");
+  const saved = await createBookNote({
+    bookId,
+    type: REVIEW_NOTE_TYPE,
+    cfi: top.cfi ?? "",
+    text: top.text ?? "",
+    author: "human",
+    sourceNoteId: top.id,
+    note: content,
+    context: top.context,
+  });
+  await commitReviewNote(bookId, saved, readerStore, queryClient);
+  return saved;
+}
+
+/** Nova 结合前面几楼接着回复，新楼层挂在帖子下面。 */
+export async function generateThreadReply({
+  bookId,
+  thread,
+  readerStore,
+  queryClient,
+}: {
+  bookId: string;
+  thread: Pick<AnnotationThread, "top" | "replies">;
+  readerStore: ReaderStoreApi;
+  queryClient: QueryClient;
+}): Promise<BookNote> {
+  const turns = threadTranscript(thread);
+  if (turns.length === 0) throw new Error("这个帖子还没有内容，先写点什么吧");
+  const { top } = thread;
+  const readerState = readerStore.getState();
+  const book = readerState.bookId === bookId ? readerState.bookData?.book : null;
+  const settingsSnapshot = await getCoReadingSnapshot(bookId);
+  const result = await requestCoReadingThreadReply(
+    {
+      bookTitle: book?.title ?? "",
+      bookAuthor: book?.author ?? "",
+      quote: top.type === "annotation" ? (top.text ?? "") : "",
+      contextBefore: top.context?.before ?? "",
+      contextAfter: top.context?.after ?? "",
+      turns,
+      rollingSummary: settingsSnapshot.settings.rollingSummary,
+    },
+    settingsSnapshot.settings,
+  );
+  const reply = validateCoReadingReviewResult(result);
+  const saved = await createBookNote({
+    bookId,
+    type: REVIEW_NOTE_TYPE,
+    cfi: top.cfi ?? "",
+    text: top.text ?? "",
+    author: "ai",
+    sourceNoteId: top.id,
+    note: reply,
+    context: top.context,
+  });
+  await commitReviewNote(bookId, saved, readerStore, queryClient);
+  return saved;
 }

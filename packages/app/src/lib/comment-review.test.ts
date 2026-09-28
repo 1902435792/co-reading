@@ -4,10 +4,12 @@ import type { BookNote } from "../types/book.ts";
 import {
   buildAnnotationThreads,
   guessReviewMode,
+  isBookReviewPost,
   loadNotepadOrder,
   loadReviewModes,
   saveNotepadOrder,
   saveReviewMode,
+  threadTranscript,
 } from "./comment-review.ts";
 
 const note = (id: string, createdAt: number, extra: Partial<BookNote> = {}): BookNote => ({
@@ -55,6 +57,48 @@ test("buildAnnotationThreads：回评挂在原划线下，最新在上", () => {
     byPosition.map((thread) => thread.top.id),
     ["a", "b", "c", "o"],
   );
+});
+
+test("buildAnnotationThreads：我的楼中回复也进楼，整书书评单独成帖", () => {
+  const a = note("a", 100, { note: "这里什么意思？" });
+  const nova = note("n", 200, { author: "ai", sourceNoteId: "a", note: "意思是……" });
+  const mine = note("m", 300, { type: "review", author: "human", sourceNoteId: "a", note: "懂了，那后面呢" });
+  const post = note("p", 250, { type: "review", author: "human", cfi: "", note: "整本书读下来很压抑" });
+  const threads = buildAnnotationThreads([a, nova, mine, post], "newest");
+  assert.deepEqual(
+    threads.map((thread) => thread.top.id),
+    ["a", "p"],
+  );
+  assert.deepEqual(
+    threads[0]!.replies.map((reply) => reply.id),
+    ["n", "m"],
+  );
+  assert.equal(threads[0]!.latest, 300);
+  assert.equal(isBookReviewPost(post), true);
+  assert.equal(isBookReviewPost(mine), false);
+  assert.equal(isBookReviewPost(a), false);
+});
+
+test("threadTranscript：楼层变成对话，只划线的楼主用占位，空楼跳过，保留最近几楼", () => {
+  const top = note("t", 1);
+  const replies = [
+    note("r1", 2, { author: "ai", sourceNoteId: "t", note: "第一楼回评" }),
+    note("r2", 3, { type: "review", sourceNoteId: "t", note: "  " }),
+    note("r3", 4, { type: "review", sourceNoteId: "t", note: "我的追问" }),
+    note("r4", 5, { type: "review", author: "ai", sourceNoteId: "t", note: "Nova 再答" }),
+  ];
+  assert.deepEqual(threadTranscript({ top, replies }), [
+    { speaker: "reader", text: "（划了这句）" },
+    { speaker: "nova", text: "第一楼回评" },
+    { speaker: "reader", text: "我的追问" },
+    { speaker: "nova", text: "Nova 再答" },
+  ]);
+  assert.deepEqual(
+    threadTranscript({ top, replies }, 3).map((turn) => turn.text),
+    ["（划了这句）", "我的追问", "Nova 再答"],
+  );
+  const aiTop = note("x", 1, { author: "ai", note: "Nova 共读边注" });
+  assert.deepEqual(threadTranscript({ top: aiTop, replies: [] }), [{ speaker: "nova", text: "Nova 共读边注" }]);
 });
 
 test("回评方式与排序偏好可以保存", () => {

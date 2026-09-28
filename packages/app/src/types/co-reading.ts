@@ -120,6 +120,19 @@ export interface CoReadingReviewResult {
   review: string;
 }
 
+/** 书评区里 Nova 接着楼层回复的输入。 */
+export interface CoReadingThreadReplyInput {
+  bookTitle: string;
+  bookAuthor: string;
+  /** 帖子引用的原文；整书书评为空。 */
+  quote: string;
+  contextBefore: string;
+  contextAfter: string;
+  /** 楼层对话，按时间正序；最后一楼是 Nova 要接的话。 */
+  turns: { speaker: "reader" | "nova"; text: string }[];
+  rollingSummary: string;
+}
+
 export interface CoReadingReviewInput {
   text: string;
   contextBefore: string;

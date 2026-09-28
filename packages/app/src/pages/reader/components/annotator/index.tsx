@@ -42,6 +42,9 @@ const INK_HIT_PROBES: ReadonlyArray<readonly [number, number]> = [
   [0, -16],
 ];
 
+/** 触屏选字：选区停止变化这么久后弹出划线菜单（拖动选区手柄时不打断）。 */
+const TOUCH_SELECTION_SETTLE_MS = 450;
+
 function NovaIcon({ size = 16 }: { size?: number }) {
   return <img src={NOVA_STATIC_AVATAR} alt="" width={size} height={size} className="rounded-full" />;
 }
@@ -85,7 +88,11 @@ const Annotator: React.FC = () => {
     handleSendAIQuery,
   } = useAnnotator({ bookId });
 
-  const { handleScroll, handleMouseUp, handleShowPopup } = useTextSelector(bookId, setSelection, handleDismissPopup);
+  const { handleScroll, handleMouseUp, handleShowPopup, markAnnotationTapped } = useTextSelector(
+    bookId,
+    setSelection,
+    handleDismissPopup,
+  );
 
   // 墨点边注：鼠标移到带墨点的句子上时，浮出 Nova 的边注。
   const [inkTip, setInkTip] = useState<{ id: string; text: string; x: number; y: number } | null>(null);
@@ -107,7 +114,12 @@ const Annotator: React.FC = () => {
       const [key] = (overlayer?.hitTest?.({ x: event.clientX + dx, y: event.clientY + dy }) ?? []) as [string?];
       if (!key) continue;
       note = booknotes.find(
-        (item) => (item.cfi === key || item.id === key) && item.author === "ai" && !item.deletedAt && item.note,
+        (item) =>
+          (item.cfi === key || item.id === key) &&
+          item.type === "annotation" &&
+          item.author === "ai" &&
+          !item.deletedAt &&
+          item.note,
       );
       if (note) break;
     }
@@ -133,6 +145,24 @@ const Annotator: React.FC = () => {
     if (detail.doc) {
       detail.doc.addEventListener("mouseup", () => {
         handleMouseUp(doc, index);
+      });
+      // 平板 / 手机：长按选字不会触发 mouseup。选区停止变化一小会儿后，按「松开鼠标」同样处理，弹出划线 / 评论菜单。
+      let lastPointerType = window.matchMedia?.("(pointer: coarse)").matches ? "touch" : "mouse";
+      let selectionTimer = 0;
+      detail.doc.addEventListener(
+        "pointerdown",
+        (pointerEvent: PointerEvent) => {
+          lastPointerType = pointerEvent.pointerType || lastPointerType;
+        },
+        true,
+      );
+      detail.doc.addEventListener("selectionchange", () => {
+        if (lastPointerType === "mouse") return;
+        window.clearTimeout(selectionTimer);
+        selectionTimer = window.setTimeout(() => {
+          const sel = doc.getSelection?.();
+          if (sel && !sel.isCollapsed && sel.toString().trim()) handleMouseUp(doc, index);
+        }, TOUCH_SELECTION_SETTLE_MS);
       });
       let pending = 0;
       detail.doc.addEventListener("mousemove", (moveEvent: MouseEvent) => {
@@ -180,7 +210,9 @@ const Annotator: React.FC = () => {
       const id = (event as CustomEvent<{ id?: string }>).detail?.id;
       const note = store
         .getState()
-        .config?.booknotes?.find((item) => item.id === id && item.author === "ai" && !item.deletedAt);
+        .config?.booknotes?.find(
+          (item) => item.id === id && item.type === "annotation" && item.author === "ai" && !item.deletedAt,
+        );
       if (note) void view?.addAnnotation(note);
     };
     // 评论区有了新对话：墨点外面加上细环
@@ -248,6 +280,8 @@ const Annotator: React.FC = () => {
     );
 
     if (!annotation) return;
+    // 这次点击是点在已有标注上：别再当成「点屏幕两侧翻页」
+    markAnnotationTapped();
 
     if (annotation.author === "ai") {
       // 左侧批注栏高亮 + 右侧阅读地图联动
