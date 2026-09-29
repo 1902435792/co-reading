@@ -1,5 +1,5 @@
 import { PHONE_MAX_WIDTH } from "@/hooks/use-is-phone";
-import { PHONE_CHROME_CLOSE } from "@/lib/phone-reader";
+import { INK_TIP_CLOSE, PHONE_CHROME_CLOSE } from "@/lib/phone-reader";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useImmersiveStore } from "@/store/immersive-store";
 import { useLayoutStore } from "@/store/layout-store";
@@ -29,6 +29,15 @@ export function handleAndroidBack(): boolean {
   // 1.5 手机阅读页的操作栏（点书页中间弹出的那层）
   if (document.querySelector('[data-phone-chrome="open"]')) {
     window.dispatchEvent(new Event(PHONE_CHROME_CLOSE));
+    return true;
+  }
+  // 1.6 手机：点批注弹出的单条卡片、Nova 墨点边注小窗
+  if (useLayoutStore.getState().focusedAnnotation) {
+    useLayoutStore.getState().closeFocusedAnnotation();
+    return true;
+  }
+  if (document.querySelector("[data-ink-tip]")) {
+    window.dispatchEvent(new Event(INK_TIP_CLOSE));
     return true;
   }
   const settings = useAppSettingsStore.getState();

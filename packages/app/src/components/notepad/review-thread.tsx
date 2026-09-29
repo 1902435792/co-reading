@@ -125,6 +125,8 @@ export const ReviewThread = ({
     if (top.cfi && isPhoneWidth() && useLayoutStore.getState().isNotepadVisible) {
       useLayoutStore.setState({ isNotepadVisible: false });
     }
+    // 单条批注卡片也一样：跳过去就收起
+    if (top.cfi && isPhoneWidth()) useLayoutStore.getState().closeFocusedAnnotation();
   }, [kind, top, view]);
 
   const askNova = useCallback(

@@ -2,7 +2,18 @@ import { isJevPickNote } from "@/lib/co-reading-trigger";
 import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
 import { askNova } from "@/components/nova/nova-bus";
 import { getNovaExtras, useNovaExtras } from "@/components/nova/nova-extras";
-import { NOTE_WORTH_EVENT, drawInkDot, getNoteWorth, inkStrength } from "@/components/nova/nova-ink";
+import {
+  INK_TAP_RADIUS,
+  NOTE_WORTH_EVENT,
+  drawInkDot,
+  endsWithPunctuation,
+  getNoteWorth,
+  inkColor,
+  inkDotGeometry,
+  inkStrength,
+} from "@/components/nova/nova-ink";
+import { INK_TIP_CLOSE, PHONE_CHROME_TOGGLE, isPhoneWidth } from "@/lib/phone-reader";
+import { eventDispatcher } from "@/utils/event";
 import { NOTE_THREAD_EVENT, hasNoteThread } from "@/components/nova/nova-threads";
 import { drawSoftHighlight, drawSoftUnderline } from "@/components/reading-page/annotation-draw";
 import {
@@ -47,6 +58,51 @@ const TOUCH_SELECTION_SETTLE_MS = 450;
 
 function NovaIcon({ size = 16 }: { size?: number }) {
   return <img src={NOVA_STATIC_AVATAR} alt="" width={size} height={size} className="rounded-full" />;
+}
+
+/** 手机上点墨点弹出的 Nova 边注：淡入 + 轻微放大，点一下就关。 */
+function InkTouchTip({
+  tip,
+  onClose,
+}: {
+  tip: { text: string; x: number; y: number };
+  onClose: () => void;
+}) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const width = Math.min(300, window.innerWidth - 24);
+  const left = Math.max(12, Math.min(tip.x - width / 2, window.innerWidth - width - 12));
+  const below = tip.y < window.innerHeight * 0.5;
+  return (
+    <button
+      type="button"
+      data-ink-tip=""
+      onClick={onClose}
+      className="fixed z-50 rounded-2xl border border-neutral-200/80 bg-background/95 px-3.5 py-3 text-left shadow-[0_8px_28px_rgba(0,0,0,0.14)] backdrop-blur-sm dark:border-neutral-700/80"
+      style={{
+        left,
+        width,
+        ...(below ? { top: tip.y + 14 } : { bottom: window.innerHeight - tip.y + 14 }),
+        maxHeight: "min(55vh, 26rem)",
+        overflowY: "auto",
+        opacity: shown ? 1 : 0,
+        transform: shown ? "none" : `translateY(${below ? -6 : 6}px) scale(0.97)`,
+        transformOrigin: below ? "top center" : "bottom center",
+        transition: "opacity 180ms ease-out, transform 220ms cubic-bezier(0.32, 0.72, 0, 1)",
+      }}
+    >
+      <span className="mb-1.5 flex items-center gap-1.5 text-[11px] text-neutral-500 dark:text-neutral-400">
+        <NovaIcon size={16} />
+        Nova 的边注
+      </span>
+      <span className="block whitespace-pre-line text-[14px] text-neutral-800 leading-relaxed dark:text-neutral-100">
+        {tip.text}
+      </span>
+    </button>
+  );
 }
 
 const Annotator: React.FC = () => {
@@ -95,8 +151,19 @@ const Annotator: React.FC = () => {
   );
 
   // 墨点边注：鼠标移到带墨点的句子上时，浮出 Nova 的边注。
-  const [inkTip, setInkTip] = useState<{ id: string; text: string; x: number; y: number } | null>(null);
+  // touch：手机上点墨点弹出的小窗（能点、点一下就关）；鼠标悬停浮出的那种不响应点击
+  const [inkTip, setInkTip] = useState<{ id: string; text: string; x: number; y: number; touch?: boolean } | null>(
+    null,
+  );
+  const inkTipOpenedAt = useRef(0);
+  // 最近一次在书页上点的位置（书页自己的坐标），用来判断是不是点中了墨点
+  const lastTapRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const pointerTypeRef = useRef<string>(
+    typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches ? "touch" : "mouse",
+  );
   const updateInkTip = (doc: Document, event: MouseEvent) => {
+    // 触屏点一下也会补发一次 mousemove：不当成悬停，否则小窗弹出来就关不掉
+    if (pointerTypeRef.current !== "mouse") return;
     if (getNovaExtras().aiNoteStyle !== "ink") {
       setInkTip((current) => (current ? null : current));
       return;
@@ -153,6 +220,15 @@ const Annotator: React.FC = () => {
         "pointerdown",
         (pointerEvent: PointerEvent) => {
           lastPointerType = pointerEvent.pointerType || lastPointerType;
+          pointerTypeRef.current = lastPointerType;
+        },
+        true,
+      );
+      // 在 foliate 判断「点中了哪条批注」之前记下点击位置
+      detail.doc.addEventListener(
+        "click",
+        (clickEvent: MouseEvent) => {
+          lastTapRef.current = { x: clickEvent.clientX, y: clickEvent.clientY, t: Date.now() };
         },
         true,
       );
@@ -172,7 +248,7 @@ const Annotator: React.FC = () => {
           updateInkTip(doc, moveEvent);
         });
       });
-      detail.doc.addEventListener("mouseleave", () => setInkTip(null));
+      detail.doc.addEventListener("mouseleave", () => setInkTip((current) => (current?.touch ? current : null)));
       detail.doc.addEventListener("keydown", handleUndoKeyDown);
     }
   };
@@ -246,9 +322,10 @@ const Annotator: React.FC = () => {
       const el = node.nodeType === 1 ? node : node.parentElement;
       const writingMode: string = el ? doc.defaultView.getComputedStyle(el).writingMode : "";
       draw(drawInkDot, {
-        color: hexColor,
+        color: inkColor(useThemeStore.getState().isDarkMode),
         strength: inkStrength((annotation as BookNote).note, getNoteWorth((annotation as BookNote).id)),
         vertical: writingMode.startsWith("vertical"),
+        tailIsPunctuation: endsWithPunctuation((annotation as BookNote).text),
         bounds: { width: doc.documentElement.scrollWidth, height: doc.documentElement.scrollHeight },
         threaded: hasNoteThread(bookId, (annotation as BookNote).id),
       });
@@ -286,8 +363,53 @@ const Annotator: React.FC = () => {
     );
 
     if (!annotation) return;
+    const phone = isPhoneWidth();
+
+    // 墨点样式的 Nova 边注：书上只画了一个小墨点，但 foliate 认的是整句话的范围。
+    // 只有点在墨点附近才算点中；点在句子别处就当普通点屏幕（翻页 / 呼出菜单）。
+    if (annotation.author === "ai" && getNovaExtras().aiNoteStyle === "ink" && range) {
+      const doc = (range.startContainer as Node).ownerDocument;
+      const node = range.startContainer as Node;
+      const el = node.nodeType === 1 ? (node as Element) : node.parentElement;
+      const vertical = Boolean(el && doc?.defaultView?.getComputedStyle(el).writingMode.startsWith("vertical"));
+      const dot = inkDotGeometry(
+        Array.from((range as Range).getClientRects()),
+        vertical,
+        undefined,
+        endsWithPunctuation(annotation.text),
+      );
+      const tap = lastTapRef.current;
+      if (dot && tap && Date.now() - tap.t < 1000) {
+        if (Math.hypot(tap.x - dot.cx, tap.y - dot.cy) > INK_TAP_RADIUS) return;
+      }
+      markAnnotationTapped();
+      if (phone) {
+        // 手机：在墨点旁边弹出 Nova 的边注，点一下就关；不再联动打开书评区
+        const frame = (doc?.defaultView?.frameElement as HTMLElement | null)?.getBoundingClientRect();
+        if (annotation.note?.trim()) {
+          inkTipOpenedAt.current = Date.now();
+          setInkTip({
+            id: annotation.id,
+            text: annotation.note,
+            x: (frame?.left ?? 0) + (dot?.cx ?? tap?.x ?? 0),
+            y: (frame?.top ?? 0) + (dot?.cy ?? tap?.y ?? 0),
+            touch: true,
+          });
+        }
+        return;
+      }
+      useLayoutStore.getState().openNotepadAnnotation(annotation.id);
+      return;
+    }
+
     // 这次点击是点在已有标注上：别再当成「点屏幕两侧翻页」
     markAnnotationTapped();
+
+    // 手机：点 Nova 边注或带评论的划线，从底部弹出只有这一条的卡片
+    if (phone && (annotation.author === "ai" || annotation.note?.trim())) {
+      useLayoutStore.getState().openFocusedAnnotation(bookId, annotation.id);
+      return;
+    }
 
     if (annotation.author === "ai") {
       // 只在左侧书评区定位到这条；不再联动打开右侧栏（主人觉得多余）。
@@ -314,6 +436,29 @@ const Annotator: React.FC = () => {
   };
 
   useFoliateEvents(view, { onLoad, onDrawAnnotation, onShowAnnotation });
+
+  // 手机墨点小窗：翻页、呼出菜单、再点一下书页、按返回，都收起
+  const touchTipOpen = Boolean(inkTip?.touch);
+  useEffect(() => {
+    if (!touchTipOpen) return;
+    const close = () => setInkTip((current) => (current?.touch ? null : current));
+    const onSingleClick = (): boolean => {
+      // 弹出小窗的那一下点击随后也会到这里，不能把刚弹出的关掉
+      if (Date.now() - inkTipOpenedAt.current < 600) return false;
+      close();
+      return true; // 这一下只用来关小窗，不翻页
+    };
+    view?.addEventListener("relocate", close);
+    window.addEventListener(PHONE_CHROME_TOGGLE, close);
+    window.addEventListener(INK_TIP_CLOSE, close);
+    eventDispatcher.onSync("iframe-single-click", onSingleClick);
+    return () => {
+      view?.removeEventListener("relocate", close);
+      window.removeEventListener(PHONE_CHROME_TOGGLE, close);
+      window.removeEventListener(INK_TIP_CLOSE, close);
+      eventDispatcher.offSync("iframe-single-click", onSingleClick);
+    };
+  }, [touchTipOpen, view]);
 
   // 同步 popup 显示状态到 text selector
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
@@ -344,7 +489,8 @@ const Annotator: React.FC = () => {
 
   return (
     <div>
-      {inkTip && (
+      {inkTip?.touch && <InkTouchTip tip={inkTip} onClose={() => setInkTip(null)} />}
+      {inkTip && !inkTip.touch && (
         <div
           className="pointer-events-none fixed z-50 w-72 rounded-xl border-2 border-amber-300 bg-amber-50 px-3 py-2 text-amber-950 text-xs leading-relaxed shadow-lg dark:border-amber-800 dark:bg-amber-950 dark:text-amber-50"
           style={{

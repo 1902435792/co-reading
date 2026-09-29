@@ -117,8 +117,14 @@ export function PhoneReaderOverlay({ bookId, isTabVisible }: { bookId: string; i
   useEffect(() => () => setNativeStatusBarVisible(false), []);
 
   // 仿真翻页：只在看书、分页、菜单和面板都收着时让原生层接管左右拖动
-  const { isChatVisible, isNotepadVisible } = useLayoutStore();
-  const curlOn = isTabVisible && !open && !isChatVisible && !isNotepadVisible && currentEffect(globalViewSettings) === "curl";
+  const { isChatVisible, isNotepadVisible, focusedAnnotation } = useLayoutStore();
+  const curlOn =
+    isTabVisible &&
+    !open &&
+    !isChatVisible &&
+    !isNotepadVisible &&
+    !focusedAnnotation &&
+    currentEffect(globalViewSettings) === "curl";
   const curlMode = currentEffect(globalViewSettings) === "curl" && curlSupported();
   useEffect(() => {
     setNativeCurlEnabled(curlOn);

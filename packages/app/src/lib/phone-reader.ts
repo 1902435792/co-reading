@@ -28,6 +28,8 @@ declare global {
 export const PHONE_CHROME_TOGGLE = "deepreader-toggle-reader-chrome";
 /** 返回键等：收起操作栏 */
 export const PHONE_CHROME_CLOSE = "deepreader-close-reader-chrome";
+/** 返回键等：收起 Nova 墨点边注小窗 */
+export const INK_TIP_CLOSE = "deepreader-close-ink-tip";
 
 export type PageTurnEffect = "curl" | "slide" | "fade" | "none" | "scroll";
 

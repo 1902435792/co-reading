@@ -6,6 +6,7 @@ import SettingsDialog from "@/components/settings/settings-dialog";
 import SideChat from "@/components/side-chat";
 import WindowControls from "@/components/window-controls";
 import { PhoneSheet } from "@/components/phone-sheet";
+import { FocusedThreadSheet } from "@/components/notepad/focused-thread-sheet";
 import {
   ensurePhonePageTurn,
   installCurlBridge,
@@ -436,6 +437,7 @@ export default function ReaderLayout() {
                   <PhoneSheet open={isChatVisible} title="共读 AI" onClose={toggleChatSidebar}>
                     <SideChat key={`chat-${tab.id}`} bookId={tab.bookId} />
                   </PhoneSheet>
+                  <FocusedThreadSheet bookId={tab.bookId} active={tab.id === activeTabId} />
                 </div>
               </ReaderProvider>
             );

@@ -32,6 +32,10 @@ interface LayoutStore {
   toggleChatSidebar: () => void;
   toggleNotepadSidebar: () => void;
   openNotepadAnnotation: (annotationId: string) => void;
+  /** 手机：点书上的一条批注，只弹出这一条（底部卡片），不打开整个书评区 */
+  focusedAnnotation: { bookId: string; id: string } | null;
+  openFocusedAnnotation: (bookId: string, annotationId: string) => void;
+  closeFocusedAnnotation: () => void;
   clearPendingNotepadAnnotation: () => void;
 }
 
@@ -45,6 +49,7 @@ export const useLayoutStore = create<LayoutStore>()(
       isChatVisible: true,
       isNotepadVisible: false,
       pendingNotepadAnnotationId: null,
+      focusedAnnotation: null,
       isHomeDrawerOpen: false,
       setHomeDrawerOpen: (open: boolean) => set({ isHomeDrawerOpen: open }),
 
@@ -161,6 +166,14 @@ export const useLayoutStore = create<LayoutStore>()(
           isNotepadVisible: true,
           pendingNotepadAnnotationId: annotationId,
         });
+      },
+
+      openFocusedAnnotation: (bookId: string, annotationId: string) => {
+        set({ focusedAnnotation: { bookId, id: annotationId } });
+      },
+
+      closeFocusedAnnotation: () => {
+        if (get().focusedAnnotation) set({ focusedAnnotation: null });
       },
 
       clearPendingNotepadAnnotation: () => {
