@@ -1,6 +1,7 @@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ReadingPageControls } from "@/components/reading-page/reading-page-controls";
+import { rememberPhoneScrolled } from "@/lib/phone-reader";
 import { CURATED_FONTS, DEFAULT_BOOK_FONT } from "@/services/constants";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useFontStore } from "@/store/font-store";
@@ -19,7 +20,7 @@ const FONT_SIZE_MIN = 12;
 const FONT_SIZE_MAX = 32;
 const FONT_SIZE_STEP = 2;
 
-const SettingsDropdown = () => {
+const SettingsDropdown = ({ phone = false }: { phone?: boolean }) => {
   const store = useReaderStoreApi();
   const { themeMode, setThemeMode } = useThemeStore();
   const { settings, setSettings, toggleSettingsDialog } = useAppSettingsStore();
@@ -104,6 +105,7 @@ const SettingsDropdown = () => {
 
   const applyScrolledMode = useCallback(
     (newScrolled: boolean) => {
+      rememberPhoneScrolled(newScrolled);
       const updated = updateGlobalViewSettings((settings) => ({ ...settings, scrolled: newScrolled }));
       if (!view?.renderer) return;
 
@@ -172,19 +174,31 @@ const SettingsDropdown = () => {
   return (
     <DropdownMenu open={isSettingsDropdownOpen} onOpenChange={handleToggleSettingsDropdown}>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="btn btn-ghost flex h-7 min-h-7 items-center justify-center gap-1 rounded-full px-2 text-xs outline-none hover:bg-neutral-200 focus:outline-none focus-visible:ring-0 dark:hover:bg-neutral-700"
-          title="阅读设置：字体、字号、排版、主题、背景色"
-        >
-          <Settings2 size={16} />
-          <span>设置</span>
-        </button>
+        {phone ? (
+          <button
+            type="button"
+            className="flex flex-1 flex-col items-center gap-1 py-1 text-[11px] text-neutral-700 outline-none active:opacity-60 dark:text-neutral-300"
+            title="阅读设置：字体、字号、排版、主题、背景色"
+          >
+            <Settings2 size={20} />
+            <span>设置</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-ghost flex h-7 min-h-7 items-center justify-center gap-1 rounded-full px-2 text-xs outline-none hover:bg-neutral-200 focus:outline-none focus-visible:ring-0 dark:hover:bg-neutral-700"
+            title="阅读设置：字体、字号、排版、主题、背景色"
+          >
+            <Settings2 size={16} />
+            <span>设置</span>
+          </button>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="max-h-[min(80vh,46rem)] w-80 overflow-y-auto p-3"
-        align="end"
-        side="bottom"
+        className={phone ? "max-h-[62vh] w-[calc(100vw-1rem)] overflow-y-auto p-3" : "max-h-[min(80vh,46rem)] w-80 overflow-y-auto p-3"}
+        align={phone ? "center" : "end"}
+        side={phone ? "top" : "bottom"}
+        collisionPadding={8}
         sideOffset={4}
       >
         <div className="space-y-4">

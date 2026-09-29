@@ -103,6 +103,8 @@ export interface BookLayout {
   readingWidth?: number;
   maxBlockSize: number;
   animated: boolean;
+  /** 手机翻页效果：平移 / 淡入 / 无动画（上下滚动用 scrolled 表示） */
+  pageTurnEffect?: "slide" | "fade" | "none";
   writingMode: WritingMode;
   vertical: boolean;
   rtl: boolean;

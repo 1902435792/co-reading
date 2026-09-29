@@ -1,5 +1,6 @@
 import { useReadingSession } from "@/hooks/use-reading-session";
 import { NovaCompanion } from "@/components/nova/nova-companion";
+import { useIsPhone } from "@/hooks/use-is-phone";
 import { useSafeAreaInsets } from "@/hooks/use-safe-areaInsets";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useLayoutStore } from "@/store/layout-store";
@@ -18,6 +19,7 @@ import { useReadingSummary } from "../hooks/use-reading-summary";
 import Annotator from "./annotator";
 import FooterBar from "./footer-bar";
 import HeaderBar from "./header-bar";
+import { PhoneBottomInfo, PhoneReaderOverlay, PhoneTopInfo } from "./phone-reader-chrome";
 import { useReaderStore, useReaderStoreApi } from "./reader-provider";
 
 const ReaderViewerContent: React.FC = () => {
@@ -86,6 +88,7 @@ export default function ReaderViewer() {
   useCoReadingNavigation(bookId);
   useReadingSummary(bookId);
 
+  const isPhone = useIsPhone();
   const immersive = useImmersiveStore((state) => state.immersive);
   const exitImmersive = useImmersiveStore((state) => state.exitImmersive);
   // 沉浸阅读的提示只在「刚进入」时弹一次；切换标签页回来不再重复。
@@ -167,11 +170,12 @@ export default function ReaderViewer() {
 
   return (
     <div id={`gridcell-${bookId}`} className="relative flex h-full w-full flex-col rounded-md bg-background">
-      {!immersive && <HeaderBar />}
+      {isPhone ? <PhoneTopInfo /> : !immersive && <HeaderBar />}
       <ReaderViewerContent />
-      {!immersive && <FooterBar />}
+      {isPhone ? <PhoneBottomInfo /> : !immersive && <FooterBar />}
       <Annotator />
       <NovaCompanion bookId={bookId} isTabVisible={isTabVisible} />
+      {isPhone && <PhoneReaderOverlay bookId={bookId} isTabVisible={isTabVisible} />}
     </div>
   );
 }

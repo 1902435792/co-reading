@@ -1,4 +1,5 @@
 import { useUICSS } from "@/hooks/use-ui-css";
+import { ensurePhonePageTurn } from "@/lib/phone-reader";
 import type { BookDoc } from "@/lib/document";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useThemeStore } from "@/store/theme-store";
@@ -62,9 +63,15 @@ export const useFoliateViewer = (bookId: string, bookDoc: BookDoc, config: BookC
     });
 
     manager.setViewSettingsCallback((updatedSettings: ViewSettings) => {
+      // 只写回从书里识别出的排版方向；其余用最新设置，免得把打开书期间刚改的设置（如手机翻页方式）盖回旧值
+      const latest = useAppSettingsStore.getState().settings;
       setSettings({
-        ...settings,
-        globalViewSettings: updatedSettings,
+        ...latest,
+        globalViewSettings: {
+          ...latest.globalViewSettings,
+          vertical: updatedSettings.vertical,
+          rtl: updatedSettings.rtl,
+        },
       });
     });
 
@@ -73,6 +80,20 @@ export const useFoliateViewer = (bookId: string, bookDoc: BookDoc, config: BookC
     manager
       .initialize()
       .then(() => {
+        // 书打开的过程中设置可能刚从存储里读完（App 启动时会在后台恢复上次的书）：
+        // 按最新设置校正一次分页 / 滚动和翻页动画，免得停在默认的滚动模式
+        ensurePhonePageTurn();
+        const latest = useAppSettingsStore.getState().settings.globalViewSettings;
+        const renderer = manager.getView()?.renderer;
+        if (renderer) {
+          manager.updateViewSettings({ scrolled: latest.scrolled, animated: latest.animated });
+          const isScrolled = Boolean(renderer.scrolled);
+          if (isScrolled !== latest.scrolled) {
+            renderer.setAttribute("flow", latest.scrolled ? "scrolled" : "paginated");
+          }
+          if (latest.animated) renderer.setAttribute("animated", "");
+          else renderer.removeAttribute("animated");
+        }
         forceUpdate({});
       })
       .catch((error) => {
@@ -131,12 +152,27 @@ export const useFoliateViewer = (bookId: string, bookDoc: BookDoc, config: BookC
 
     // setAttribute("flow", ...) 会让 foliate 重新渲染，丢失当前位置，
     // 所以只在 scrolled 状态真正切换时才调用，字体/边距等其他变化不触发。
-    const flowChanged = prevScrolledRef.current !== undefined && prevScrolledRef.current !== scrolled;
+    const flowChanged =
+      (prevScrolledRef.current !== undefined && prevScrolledRef.current !== scrolled) ||
+      Boolean(view.renderer.scrolled) !== scrolled;
+    // 同步给版面管理器，免得之后转屏 / 改尺寸时又按旧的模式重排
+    managerRef.current?.updateViewSettings({ scrolled });
     if (flowChanged) {
       view.renderer.setAttribute("flow", scrolled ? "scrolled" : "paginated");
     }
     prevScrolledRef.current = scrolled;
   }, [insets.top, insets.right, insets.bottom, insets.left, scrolled]);
+
+  // 翻页动画（手机「翻页方式」里的平移 / 淡入 / 无动画）
+  const animated = settings.globalViewSettings.animated;
+  useEffect(() => {
+    const manager = managerRef.current;
+    const view = manager?.getView();
+    if (!view?.renderer || !isInitialized.current) return;
+    manager!.updateViewSettings({ animated });
+    if (animated) view.renderer.setAttribute("animated", "");
+    else view.renderer.removeAttribute("animated");
+  }, [animated]);
 
   const { handlePageFlip, handleContinuousScroll } = usePagination(
     bookId,

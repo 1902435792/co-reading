@@ -1,4 +1,5 @@
 import { PHONE_MAX_WIDTH } from "@/hooks/use-is-phone";
+import { PHONE_CHROME_CLOSE } from "@/lib/phone-reader";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useImmersiveStore } from "@/store/immersive-store";
 import { useLayoutStore } from "@/store/layout-store";
@@ -23,6 +24,11 @@ export function handleAndroidBack(): boolean {
   if (layer) {
     const esc = { key: "Escape", code: "Escape", keyCode: 27, bubbles: true, cancelable: true };
     (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown", esc));
+    return true;
+  }
+  // 1.5 手机阅读页的操作栏（点书页中间弹出的那层）
+  if (document.querySelector('[data-phone-chrome="open"]')) {
+    window.dispatchEvent(new Event(PHONE_CHROME_CLOSE));
     return true;
   }
   const settings = useAppSettingsStore.getState();

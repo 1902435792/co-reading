@@ -6,6 +6,7 @@ import SettingsDialog from "@/components/settings/settings-dialog";
 import SideChat from "@/components/side-chat";
 import WindowControls from "@/components/window-controls";
 import { PhoneSheet } from "@/components/phone-sheet";
+import { ensurePhonePageTurn, setNativeReaderImmersive } from "@/lib/phone-reader";
 import { useIsPhone } from "@/hooks/use-is-phone";
 import { useFontEvents } from "@/hooks/use-font-events";
 import ReaderViewer from "@/pages/reader";
@@ -159,6 +160,20 @@ export default function ReaderLayout() {
     if (state.isNotepadVisible) state.toggleNotepadSidebar();
   }, [isPhone, activeTabId]);
 
+  // 手机第一次用：翻页方式默认「分页 + 平移」（像起点那样左右翻）。等设置从存储里读完再改，免得被覆盖。
+  useEffect(() => {
+    if (!isPhone) return;
+    const run = () => ensurePhonePageTurn();
+    if (useAppSettingsStore.persist.hasHydrated()) run();
+    else return useAppSettingsStore.persist.onFinishHydration(run);
+  }, [isPhone]);
+
+  // 手机看书时藏起系统状态栏，回书架再显示
+  const readerOnPhone = isPhone && !isHomeActive && Boolean(activeTabId);
+  useEffect(() => {
+    setNativeReaderImmersive(readerOnPhone);
+  }, [readerOnPhone]);
+
   // 手机：两个面板同一时间只开一个，新打开的那个留下。
   const prevPanelsRef = useRef({ chat: isChatVisible, notepad: isNotepadVisible });
   useEffect(() => {
@@ -214,7 +229,12 @@ export default function ReaderLayout() {
 
   return (
     <div className="flex h-screen flex-col overflow-clip bg-muted">
-      <div className="select-none border-neutral-200 dark:border-neutral-700 dark:bg-tab-background">
+      {/* 手机看书时藏起标签栏（起点式全屏阅读，点书页中间才出操作栏） */}
+      <div
+        className={`select-none border-neutral-200 dark:border-neutral-700 dark:bg-tab-background ${
+          isPhone && !isHomeActive ? "hidden" : ""
+        }`}
+      >
         <Tabs
           tabs={tabs}
           onTabActive={activateTab}

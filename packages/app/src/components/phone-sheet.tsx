@@ -28,6 +28,7 @@ export function PhoneSheet({
       }`}
       aria-hidden={!open}
       inert={!open || undefined}
+      style={{ paddingTop: "var(--dr-top-inset, 0px)" }}
     >
       <div className="flex h-10 shrink-0 select-none items-center justify-between border-b px-3">
         <span className="font-medium text-sm">{title}</span>
