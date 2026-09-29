@@ -311,7 +311,8 @@ class ChromeTabs {
     tabEl.oncontextmenu = (event) => {
       this.emit("contextmenu", { tabEl, event });
     };
-    tabEl.addEventListener("mousedown", () => {
+    tabEl.addEventListener("mousedown", (e) => {
+      if ((e.target as HTMLElement | null)?.closest?.(".chrome-tab-close")) return;
       this.emit("tabClick", { tabEl });
     });
     if (animate) {
@@ -338,7 +339,13 @@ class ChromeTabs {
   }
 
   setTabCloseEventListener(tabEl: HTMLElement) {
-    tabEl.querySelector(".chrome-tab-close")!.addEventListener("click", (_) => {
+    const closeEl = tabEl.querySelector(".chrome-tab-close")!;
+    // 按下关闭按钮时不要先触发「切到这个标签」（手机上一按就跳进书里，关不掉）
+    const stop = (e: Event) => e.stopPropagation();
+    closeEl.addEventListener("mousedown", stop);
+    closeEl.addEventListener("pointerdown", stop);
+    closeEl.addEventListener("touchstart", stop, { passive: true });
+    closeEl.addEventListener("click", (_) => {
       _.stopImmediatePropagation();
       // this.removeTab(tabEl);
       this.emit("tabClose", { tabEl });

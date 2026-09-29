@@ -1,3 +1,5 @@
+import { isPhoneWidth } from "@/lib/phone-reader";
+import { useLayoutStore } from "@/store/layout-store";
 import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
 import { type CommentReviewMode, REVIEW_MODE_LABEL } from "@/lib/comment-review";
 import { useReaderStore } from "@/pages/reader/components/reader-provider";
@@ -57,6 +59,10 @@ export const AnnotationItem = ({
     // 原文定位始终保留
     if (view) {
       view.goTo(annotation.cfi);
+      // 手机上笔记面板盖住整本书：跳完收起来
+      if (isPhoneWidth() && useLayoutStore.getState().isNotepadVisible) {
+        useLayoutStore.setState({ isNotepadVisible: false });
+      }
     }
     // 不再联动打开右侧栏。
   }, [annotation, view]);

@@ -57,7 +57,7 @@ const TOCItemView = React.memo<{
     <div
       role="treeitem"
       tabIndex={-1}
-      onClick={item.href ? handleClickItem : undefined}
+      onClick={item.href || item.subitems?.length ? handleClickItem : undefined}
       aria-expanded={flatItem.isExpanded ? "true" : "false"}
       aria-selected={isActive ? "true" : "false"}
       data-href={item.href ? getContentMd5(item.href) : undefined}

@@ -6,7 +6,13 @@ import SettingsDialog from "@/components/settings/settings-dialog";
 import SideChat from "@/components/side-chat";
 import WindowControls from "@/components/window-controls";
 import { PhoneSheet } from "@/components/phone-sheet";
-import { ensurePhonePageTurn, installCurlBridge, setNativeReaderImmersive } from "@/lib/phone-reader";
+import {
+  ensurePhonePageTurn,
+  installCurlBridge,
+  setNativeHomeStatusBarHidden,
+  setNativeReaderImmersive,
+  syncNativeEdgeColor,
+} from "@/lib/phone-reader";
 import { useIsPhone } from "@/hooks/use-is-phone";
 import { useFontEvents } from "@/hooks/use-font-events";
 import ReaderViewer from "@/pages/reader";
@@ -174,6 +180,23 @@ export default function ReaderLayout() {
   useEffect(() => {
     setNativeReaderImmersive(readerOnPhone);
   }, [readerOnPhone]);
+  // 首页也藏起系统状态栏（只给摄像头让位）
+  useEffect(() => {
+    setNativeHomeStatusBarHidden(isPhone);
+  }, [isPhone]);
+  // 顶部摄像头那条留白、底部手势条那条留白跟界面同色（换主题、回书架、进书时都重新取）
+  const edgeThemeKey = useThemeStore((s) => s.themeColor);
+  const edgeViewKey = useAppSettingsStore((s) => s.settings.globalViewSettings);
+  useEffect(() => {
+    if (!isPhone) return;
+    const run = () => syncNativeEdgeColor(!readerOnPhone);
+    const t1 = setTimeout(run, 120);
+    const t2 = setTimeout(run, 700);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [isPhone, readerOnPhone, isDarkMode, edgeThemeKey, edgeViewKey]);
 
   // 手机：两个面板同一时间只开一个，新打开的那个留下。
   const prevPanelsRef = useRef({ chat: isChatVisible, notepad: isNotepadVisible });

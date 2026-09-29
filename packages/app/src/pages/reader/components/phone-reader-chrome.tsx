@@ -197,11 +197,11 @@ export function PhoneReaderOverlay({ bookId, isTabVisible }: { bookId: string; i
           </div>
           <button
             type="button"
-            aria-label="笔记"
-            onClick={() => openPanel("notes")}
+            aria-label={isDarkMode ? "日间模式" : "夜间模式"}
+            onClick={() => setThemeMode(isDarkMode ? "light" : "dark")}
             className="flex size-10 items-center justify-center rounded-full active:bg-muted"
           >
-            <NotebookPen className="size-5" />
+            {isDarkMode ? <Sun className="size-5" /> : <Moon className="size-5" />}
           </button>
           <button
             type="button"
@@ -273,13 +273,14 @@ export function PhoneReaderOverlay({ bookId, isTabVisible }: { bookId: string; i
               side="top"
               align="start"
               collisionPadding={8}
-              className="max-h-[70vh] w-[calc(100vw-1rem)] overflow-y-auto p-0"
+              className="max-h-[70vh] w-[calc(100vw-1rem)] touch-pan-y overflow-y-auto overscroll-contain p-0"
             >
               {bookDoc?.toc ? (
                 <TOCView
                   toc={bookDoc.toc}
                   bookId={bookId}
                   autoExpand={true}
+                  tapToExpand
                   onItemSelect={close}
                   isVisible={tocOpen}
                 />
@@ -325,11 +326,7 @@ export function PhoneReaderOverlay({ bookId, isTabVisible }: { bookId: string; i
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <BarButton
-            icon={isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-            label={isDarkMode ? "日间" : "夜间"}
-            onClick={() => setThemeMode(isDarkMode ? "light" : "dark")}
-          />
+          <BarButton icon={<NotebookPen size={20} />} label="书评" onClick={() => openPanel("notes")} />
           <SettingsDropdown phone />
         </div>
       </div>

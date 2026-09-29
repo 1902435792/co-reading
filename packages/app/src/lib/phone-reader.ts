@@ -14,8 +14,10 @@ declare global {
       setReaderImmersive: (on: boolean) => void;
       setStatusBarVisible: (visible: boolean) => void;
       setCurlEnabled?: (on: boolean) => void;
+      setHomeStatusBarHidden?: (hidden: boolean) => void;
+      setEdgeColor?: (r: number, g: number, b: number) => void;
       curlTurn?: (side: string) => void;
-      curlTurned?: (turned: boolean) => void;
+      curlTurned?: (turned: boolean, before: string, after: string) => void;
     };
     /** 仿真翻页：原生层截好图后调这个让书真的翻过去（silent=true 时不回调） */
     __deepreaderCurlTurn?: (side: "left" | "right", silent?: boolean) => void;
@@ -143,8 +145,8 @@ type CurlView = HTMLElement & {
 export function installCurlBridge() {
   if (window.__deepreaderCurlTurn) return;
   window.__deepreaderCurlTurn = (side, silent) => {
-    const done = (turned: boolean) => {
-      if (!silent) window.DeepReaderNative?.curlTurned?.(turned);
+    const done = (turned: boolean, before = "", after = "") => {
+      if (!silent) window.DeepReaderNative?.curlTurned?.(turned, before, after);
     };
     const view = Array.from(document.querySelectorAll<CurlView>("foliate-view")).find((el) =>
       el.checkVisibility?.({ visibilityProperty: true }),
@@ -157,7 +159,43 @@ export function installCurlBridge() {
       .catch(() => undefined)
       .then(() => {
         // 等两帧，让新页真的画出来再告诉原生层
-        requestAnimationFrame(() => requestAnimationFrame(() => done(where() !== before)));
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            const after = where();
+            done(after !== before, before, after);
+          }),
+        );
       });
   };
+}
+
+/** 手机首页也不显示系统状态栏 */
+export function setNativeHomeStatusBarHidden(hidden: boolean) {
+  try {
+    window.DeepReaderNative?.setHomeStatusBarHidden?.(hidden);
+  } catch {
+    /* 不是安卓 App */
+  }
+}
+
+/** 取屏幕某一点实际显示的底色（往上找第一个不透明的背景） */
+function colorAt(x: number, y: number): [number, number, number] | null {
+  let el = document.elementFromPoint(x, y) as HTMLElement | null;
+  while (el) {
+    const m = getComputedStyle(el).backgroundColor.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/);
+    if (m && (m[4] === undefined || Number(m[4]) > 0.5)) return [Number(m[1]), Number(m[2]), Number(m[3])];
+    el = el.parentElement;
+  }
+  return null;
+}
+
+/** 让摄像头 / 手势条那条留白跟界面同色：首页取顶部颜色，看书时取底部颜色 */
+export function syncNativeEdgeColor(onHome: boolean) {
+  try {
+    if (!window.DeepReaderNative?.setEdgeColor) return;
+    const c = colorAt(window.innerWidth / 2, onHome ? 2 : window.innerHeight - 2);
+    if (c) window.DeepReaderNative.setEdgeColor(Math.round(c[0]), Math.round(c[1]), Math.round(c[2]));
+  } catch {
+    /* 不是安卓 App */
+  }
 }

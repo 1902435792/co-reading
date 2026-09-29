@@ -11,7 +11,7 @@ import { findParentPath } from "@/utils/toc";
 import { useReaderStore } from "./reader-provider";
 import { type FlatTOCItem, StaticListRow, VirtualListRow } from "./toc-item";
 
-const useFlattenedTOC = (toc: TOCItem[], expandedItems: Set<string>) => {
+const useFlattenedTOC = (toc: TOCItem[], expandedItems: Set<string>, tapToExpand = false) => {
   return useMemo(() => {
     const flattenTOC = (items: TOCItem[], depth = 0): FlatTOCItem[] => {
       const result: FlatTOCItem[] = [];
@@ -19,6 +19,10 @@ const useFlattenedTOC = (toc: TOCItem[], expandedItems: Set<string>) => {
         const isExpanded = expandedItems.has(item.href || "");
         result.push({ item, depth, index, isExpanded });
         if (item.subitems && isExpanded) {
+          // 点标题是展开/收起，所以展开后在最前面补一行「本章开头」，还能跳到这一章自己的开头
+          if (tapToExpand && item.href && item.subitems[0]?.href !== item.href) {
+            result.push({ item: { ...item, label: "本章开头", subitems: undefined }, depth: depth + 1, index: -1 });
+          }
           result.push(...flattenTOC(item.subitems, depth + 1));
         }
       });
@@ -26,7 +30,7 @@ const useFlattenedTOC = (toc: TOCItem[], expandedItems: Set<string>) => {
     };
 
     return flattenTOC(toc);
-  }, [toc, expandedItems]);
+  }, [toc, expandedItems, tapToExpand]);
 };
 
 const TOCView: React.FC<{
@@ -35,7 +39,9 @@ const TOCView: React.FC<{
   autoExpand?: boolean;
   onItemSelect?: () => void;
   isVisible?: boolean;
-}> = ({ bookId, toc, autoExpand = false, onItemSelect }) => {
+  /** 手机目录：点有子目录的标题就展开/收起（不只点小三角） */
+  tapToExpand?: boolean;
+}> = ({ bookId, toc, autoExpand = false, onItemSelect, tapToExpand = false }) => {
   const view = useReaderStore((state) => state.view);
   const progress = useReaderStore((state) => state.progress);
   const { settings } = useAppSettingsStore();
@@ -114,7 +120,7 @@ const TOCView: React.FC<{
   }, [expandedItems]);
 
   const activeHref = useMemo(() => progress?.sectionHref || null, [progress?.sectionHref]);
-  const flatItems = useFlattenedTOC(toc, expandedItems);
+  const flatItems = useFlattenedTOC(toc, expandedItems, tapToExpand);
   const activeItemIndex = useMemo(() => {
     return flatItems.findIndex((item) => item.item.href === activeHref);
   }, [flatItems, activeHref]);
@@ -135,13 +141,21 @@ const TOCView: React.FC<{
 
   const handleItemClick = useCallback(
     (item: TOCItem) => {
+      if (tapToExpand && item.subitems?.length) {
+        handleToggleExpand(item);
+        return;
+      }
+      if (!item.href) {
+        if (item.subitems?.length) handleToggleExpand(item);
+        return;
+      }
       eventDispatcher.dispatch("navigate", { bookId, href: item.href });
       if (item.href && view) {
         view.goTo(item.href);
       }
       onItemSelect?.();
     },
-    [bookId, view, onItemSelect],
+    [bookId, view, onItemSelect, tapToExpand, handleToggleExpand],
   );
 
   const expandParents = useCallback((toc: TOCItem[], href: string) => {

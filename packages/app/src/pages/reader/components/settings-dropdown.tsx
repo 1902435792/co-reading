@@ -202,6 +202,22 @@ const SettingsDropdown = ({ phone = false }: { phone?: boolean }) => {
         sideOffset={4}
       >
         <div className="space-y-4">
+          {phone && (
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-lg bg-muted px-3 py-2.5 text-left text-sm active:opacity-70"
+              onClick={() => {
+                setOpenDropdown(null);
+                toggleSettingsDialog();
+              }}
+            >
+              <span>
+                <span className="block font-medium">全部设置</span>
+                <span className="block text-[11px] text-muted-foreground">模型、AI 共读、外观、数据</span>
+              </span>
+              <span aria-hidden className="text-muted-foreground">›</span>
+            </button>
+          )}
           <div>
             <div className="mb-3 font-medium text-sm">字体系列</div>
             {(() => {
@@ -341,17 +357,19 @@ const SettingsDropdown = ({ phone = false }: { phone?: boolean }) => {
 
           <ReadingPageControls compact />
 
-          <button
-            type="button"
-            className="flex w-full items-center justify-between rounded-md border-t pt-3 text-muted-foreground text-xs transition-colors hover:text-foreground"
-            onClick={() => {
-              setOpenDropdown(null);
-              toggleSettingsDialog();
-            }}
-          >
-            <span>全部设置（模型、AI 共读、外观、数据）</span>
-            <span aria-hidden>›</span>
-          </button>
+          {!phone && (
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-md border-t pt-3 text-muted-foreground text-xs transition-colors hover:text-foreground"
+              onClick={() => {
+                setOpenDropdown(null);
+                toggleSettingsDialog();
+              }}
+            >
+              <span>全部设置（模型、AI 共读、外观、数据）</span>
+              <span aria-hidden>›</span>
+            </button>
+          )}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

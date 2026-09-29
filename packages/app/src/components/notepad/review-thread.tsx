@@ -1,3 +1,5 @@
+import { isPhoneWidth } from "@/lib/phone-reader";
+import { useLayoutStore } from "@/store/layout-store";
 import { NOVA_STATIC_AVATAR } from "@/components/nova/nova-assets";
 import { isJevPickNote } from "@/lib/co-reading-trigger";
 import { Button } from "@/components/ui/button";
@@ -119,6 +121,10 @@ export const ReviewThread = ({
     if (kind === "book") return;
     // 只跳到原文；不再联动打开右侧栏。
     if (view && top.cfi) view.goTo(top.cfi);
+    // 手机上书评区是盖住整本书的面板：跳完要收起来，不然看起来像没反应
+    if (top.cfi && isPhoneWidth() && useLayoutStore.getState().isNotepadVisible) {
+      useLayoutStore.setState({ isNotepadVisible: false });
+    }
   }, [kind, top, view]);
 
   const askNova = useCallback(
