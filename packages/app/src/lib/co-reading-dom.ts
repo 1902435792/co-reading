@@ -108,7 +108,8 @@ export function extractVisibleCoReadingBlocks(
   focusKeyOverride?: string
 ): CoReadingBlockUpsert[] {
   const doc = visibleRange.startContainer.ownerDocument;
-  if (!doc) return [];
+  // 阅读器刚重建（比如平板转屏、换布局）时 view 还没打开书，renderer 为空
+  if (!doc || !view?.renderer?.getContents) return [];
   const content = view.renderer.getContents().find((item) => item.doc === doc);
   if (content?.index == null) return [];
   // Deriving the focus CFI walks the DOM, so only pay for it when this call owns the focus key.
@@ -164,7 +165,7 @@ export function extractVisibleCoReadingFocus(
   visibleRanges: VisibleCoReadingRange[],
   sectionLabel: string
 ): CoReadingBlockUpsert[] {
-  if (visibleRanges.length === 0) return [];
+  if (visibleRanges.length === 0 || !view?.renderer) return [];
   const rangeSignature = visibleRanges
     .map(
       ({ index, range }) => `${index}:${view.getCFI(index, range.cloneRange())}`
@@ -194,6 +195,7 @@ export function resolveVisibleCoReadingRanges(
   view: FoliateView,
   progress: { location?: string; sectionIndex?: number; range?: Range | null }
 ): VisibleCoReadingRange[] {
+  if (!view?.renderer?.getContents) return [];
   const contents = view.renderer.getContents();
   const rendererRanges = view.renderer.getVisibleRanges?.() ?? [];
   const resolvedRendererRanges = rendererRanges.flatMap((item) => {

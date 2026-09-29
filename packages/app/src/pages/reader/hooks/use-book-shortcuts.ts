@@ -6,7 +6,7 @@ import { useImmersiveStore } from "@/store/immersive-store";
 import { eventDispatcher } from "@/utils/event";
 import { getStyles } from "@/utils/style";
 import { useReaderStoreApi } from "../components/reader-provider";
-import { viewPagination } from "./use-pagination";
+import { turnPage } from "./use-pagination";
 
 const useBookShortcuts = () => {
   const store = useReaderStoreApi();
@@ -53,12 +53,12 @@ const useBookShortcuts = () => {
 
   const goLeft = () => {
     if (!isTabVisible) return;
-    viewPagination(view, globalViewSettings, "left");
+    turnPage(view, globalViewSettings, "left");
   };
 
   const goRight = () => {
     if (!isTabVisible) return;
-    viewPagination(view, globalViewSettings, "right");
+    turnPage(view, globalViewSettings, "right");
   };
 
   const goPrev = () => {

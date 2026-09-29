@@ -9,7 +9,9 @@ import { PhoneSheet } from "@/components/phone-sheet";
 import { FocusedThreadSheet } from "@/components/notepad/focused-thread-sheet";
 import {
   ensurePhonePageTurn,
+  curlSupported,
   installCurlBridge,
+  setNativeCurlEnabled,
   setNativeHomeStatusBarHidden,
   setNativeReaderImmersive,
   syncNativeEdgeColor,
@@ -169,12 +171,50 @@ export default function ReaderLayout() {
 
   // 手机第一次用：翻页方式默认「分页 + 平移」（像起点那样左右翻）。等设置从存储里读完再改，免得被覆盖。
   useEffect(() => {
-    if (!isPhone) return;
+    // 安卓平板也能用仿真翻页，所以卷页回调不分手机平板都装上（电脑上没有原生层，装了也不起作用）
     installCurlBridge();
+  }, []);
+  useEffect(() => {
+    if (!isPhone) return;
     const run = () => ensurePhonePageTurn();
     if (useAppSettingsStore.persist.hasHydrated()) run();
     else return useAppSettingsStore.persist.onFinishHydration(run);
   }, [isPhone]);
+
+  // 安卓平板：仿真翻页时让原生层接管左右拖动。侧栏、设置、弹出菜单开着时交还给网页，
+  // 免得拖设置里的滑块、在侧栏里划动时把书页卷起来。（手机由 PhoneReaderChrome 管）
+  const tabletCurlWanted = useAppSettingsStore(
+    (s) =>
+      !isPhone &&
+      curlSupported() &&
+      !s.isSettingsDialogOpen &&
+      !s.settings.globalViewSettings?.scrolled &&
+      s.settings.globalViewSettings?.pageTurnEffect === "curl",
+  );
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  useEffect(() => {
+    if (!tabletCurlWanted) return;
+    const check = () =>
+      setOverlayOpen(
+        Boolean(
+          document.querySelector(
+            '[data-radix-popper-content-wrapper], [role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
+          ),
+        ),
+      );
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true });
+    return () => observer.disconnect();
+  }, [tabletCurlWanted]);
+  const tabletCurlOn =
+    tabletCurlWanted && !isHomeActive && Boolean(activeTabId) && !isNotepadVisible && !isChatVisible && !overlayOpen;
+  useEffect(() => {
+    if (isPhone) return;
+    setNativeCurlEnabled(tabletCurlOn);
+    // 原生层卷页时书页本身不跟着手指平移，不然截图会歪
+    (window as unknown as { __deepreaderNativeSwipe?: boolean }).__deepreaderNativeSwipe = tabletCurlOn;
+  }, [isPhone, tabletCurlOn]);
 
   // 手机看书时藏起系统状态栏，回书架再显示
   const readerOnPhone = isPhone && !isHomeActive && Boolean(activeTabId);

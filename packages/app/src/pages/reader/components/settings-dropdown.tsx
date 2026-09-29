@@ -1,7 +1,8 @@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ReadingPageControls } from "@/components/reading-page/reading-page-controls";
-import { rememberPhoneScrolled } from "@/lib/phone-reader";
+import { useIsPhone } from "@/hooks/use-is-phone";
+import { PAGE_TURN_OPTIONS, applyPageTurnEffect, curlSupported, rememberPhoneScrolled } from "@/lib/phone-reader";
 import { CURATED_FONTS, DEFAULT_BOOK_FONT } from "@/services/constants";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { useFontStore } from "@/store/font-store";
@@ -30,6 +31,9 @@ const SettingsDropdown = ({ phone = false }: { phone?: boolean }) => {
 
   const globalViewSettings = settings.globalViewSettings;
   const view = store.getState().view;
+  // 手机上保留原来的「滚动 / 分页」两个按钮（翻页方式在手机操作栏里选）；平板和电脑在这里直接选翻页方式
+  const phoneWidth = useIsPhone();
+  const isPhone = phone || phoneWidth;
   const isSettingsDropdownOpen = openDropdown === "settings";
 
   const customFonts = useMemo(
@@ -284,6 +288,7 @@ const SettingsDropdown = ({ phone = false }: { phone?: boolean }) => {
             </div>
           </div>
 
+          {isPhone ? (
           <div>
             <div className="mb-3 font-medium text-sm">阅读模式</div>
             <div className="space-y-3">
@@ -315,6 +320,35 @@ const SettingsDropdown = ({ phone = false }: { phone?: boolean }) => {
               </div>
             </div>
           </div>
+          ) : (
+            <div>
+              <div className="mb-3 font-medium text-sm">翻页方式</div>
+              <div className="grid grid-cols-3 gap-2">
+                {PAGE_TURN_OPTIONS.filter((opt) => opt.id !== "curl" || curlSupported()).map((opt) => {
+                  const current = globalViewSettings.scrolled
+                    ? "scroll"
+                    : (globalViewSettings.pageTurnEffect ?? (globalViewSettings.animated ? "slide" : "none"));
+                  const active = current === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`btn btn-sm flex h-8 items-center justify-center gap-1 rounded-md px-2 ${
+                        active
+                          ? "border-none bg-primary text-primary-foreground hover:bg-primary/90"
+                          : "border bg-muted text-primary hover:bg-muted/70"
+                      }`}
+                      onClick={() => applyPageTurnEffect(opt.id)}
+                      title={opt.hint}
+                    >
+                      <span className="text-sm">{opt.label}</span>
+                      {active && <MdCheck size={14} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div>
             <div className="mb-3 font-medium text-sm">主题模式</div>

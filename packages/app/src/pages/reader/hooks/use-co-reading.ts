@@ -742,6 +742,8 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
   useEffect(() => {
     if (
       !view ||
+      // 阅读器刚重建（平板转屏、换布局）时书还没打开：安静等它，不报错
+      !view.renderer ||
       !progress ||
       snapshot?.settings.status !== "active" ||
       !isVisible
@@ -760,9 +762,8 @@ export function useCoReading(bookId: string, isVisible: boolean): void {
     if (visibleRanges.length === 0) {
       visibleFocusRef.current = null;
       visibleBlocksRef.current = [];
-      store.getState().setCoReadingRuntime({
-        error: "当前可见页尚未稳定，正在等待阅读视图完成布局",
-      });
+      // 书页还在排版（刚打开、转屏重建）：等下一次翻页 / 排好后再取，不当成出错
+      store.getState().setCoReadingRuntime({ error: null });
       updateRuntime();
       return;
     }

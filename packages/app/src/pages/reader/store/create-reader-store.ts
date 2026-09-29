@@ -166,8 +166,15 @@ export const createReaderStore = (bookId: string) => {
 
     setConfig: (config) => set({ config }),
     saveConfig: async (config) => {
-      const { bookId, bookData } = get();
+      const { bookId, bookData, location, progress } = get();
       if (!bookData?.book) return;
+      // config 里的位置是打开书那一刻的；共读、划线随时会存 config，
+      // 不能拿旧位置把阅读进度盖回去——总是写入现在读到的位置。
+      const pageinfo = progress?.pageinfo;
+      if (location) config.location = location;
+      if (pageinfo && pageinfo.current >= 0 && pageinfo.total > 0) {
+        config.progress = [pageinfo.current, pageinfo.total];
+      }
 
       const { library, setLibrary } = useLibraryStore.getState();
       const bookIndex = library.findIndex((b) => b.id === bookId);

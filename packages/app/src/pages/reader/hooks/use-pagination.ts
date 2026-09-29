@@ -1,7 +1,7 @@
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import type { ViewSettings } from "@/types/book";
 import type { FoliateView } from "@/types/view";
-import { PHONE_CHROME_TOGGLE, isPhoneWidth, nativeCurlTurn, playFadeTurn } from "@/lib/phone-reader";
+import { PHONE_CHROME_TOGGLE, curlUsableNow, isPhoneWidth, nativeCurlTurn } from "@/lib/phone-reader";
 import { eventDispatcher } from "@/utils/event";
 import { useReaderStoreApi } from "../components/reader-provider";
 
@@ -27,6 +27,50 @@ export const viewPagination = (
   }
   return side === "left" ? view.goLeft() : view.goRight();
 };
+
+/**
+ * 翻一页（手机 / 平板 / 电脑通用）：分页模式下按「翻页方式」加效果——
+ * 仿真交给安卓原生层卷页；淡入在网页里做；平移由阅读器自己的动画完成。
+ * 点屏幕两侧、键盘、底栏箭头、滚轮、音量键都走这里。
+ */
+export const turnPage = (
+  view: FoliateView | null,
+  viewSettings: ViewSettings | null | undefined,
+  side: "left" | "right",
+) => {
+  if (!view || !viewSettings) return;
+  if (!viewSettings.scrolled && !view.renderer.scrolled) {
+    if (viewSettings.pageTurnEffect === "curl" && curlUsableNow() && nativeCurlTurn(side)) return;
+    if (viewSettings.pageTurnEffect === "fade") {
+      (view as unknown as HTMLElement).animate?.([{ opacity: 0.15 }, { opacity: 1 }], {
+        duration: 260,
+        easing: "ease-out",
+      });
+    }
+  }
+  return viewPagination(view, viewSettings, side);
+};
+
+/**
+ * 滚轮 / 触控板：一次手势只翻一页。触控板轻轻一划会连发几十个滚轮事件（还带惯性），
+ * 以前每个事件翻一页，一划就飞过好几页。现在翻完一页后，等滚轮停下 200ms 才接受下一次。
+ */
+const wheelGate = { locked: false, since: 0, timer: 0 as ReturnType<typeof setTimeout> | 0 };
+const WHEEL_QUIET_MS = 200;
+const WHEEL_MAX_LOCK_MS = 1000;
+export function takeWheelTurn(deltaY: number): boolean {
+  if (Math.abs(deltaY) < 2) return false;
+  const now = Date.now();
+  if (wheelGate.timer) clearTimeout(wheelGate.timer);
+  wheelGate.timer = setTimeout(() => {
+    wheelGate.locked = false;
+    wheelGate.timer = 0;
+  }, WHEEL_QUIET_MS);
+  if (wheelGate.locked && now - wheelGate.since < WHEEL_MAX_LOCK_MS) return false;
+  wheelGate.locked = true;
+  wheelGate.since = now;
+  return true;
+}
 
 export const usePagination = (bookId: string, containerRef: React.RefObject<HTMLDivElement>) => {
   const { settings } = useAppSettingsStore();
@@ -58,9 +102,15 @@ export const usePagination = (bookId: string, containerRef: React.RefObject<HTML
               } else {
                 let side: "left" | "right" = rel < 1 / 3 ? "left" : "right";
                 if (globalViewSettings.swapClickArea) side = side === "left" ? "right" : "left";
-                if (globalViewSettings.pageTurnEffect === "curl" && nativeCurlTurn(side)) return;
-                if (globalViewSettings.pageTurnEffect === "fade") playFadeTurn(bookId);
-                viewPagination(view, globalViewSettings, side);
+                turnPage(view, globalViewSettings, side);
+              }
+            } else if (!consumed && !globalViewSettings.scrolled) {
+              // 平板 / 电脑分页模式：点左边约 3 成上一页、右边约 3 成下一页，中间不动（方便选字、点批注）
+              const rel = viewRect.width > 0 ? (screenX - viewStartX) / viewRect.width : 0.5;
+              if (rel < 0.3 || rel > 0.7) {
+                let side: "left" | "right" = rel < 0.3 ? "left" : "right";
+                if (globalViewSettings.swapClickArea) side = side === "left" ? "right" : "left";
+                turnPage(view, globalViewSettings, side);
               }
             } else if (!consumed) {
               const centerStartX = viewStartX + viewRect.width * 0.375;
@@ -87,11 +137,7 @@ export const usePagination = (bookId: string, containerRef: React.RefObject<HTML
         } else if (msg.data.type === "iframe-wheel" && !globalViewSettings.scrolled) {
           // The wheel event is handled by the iframe itself in scrolled mode.
           const { deltaY } = msg.data;
-          if (deltaY > 0) {
-            view?.next(1);
-          } else if (deltaY < 0) {
-            view?.prev(1);
-          }
+          if (takeWheelTurn(deltaY)) turnPage(view, globalViewSettings, deltaY > 0 ? "right" : "left");
         } else if (msg.data.type === "iframe-mouseup") {
           if (msg.data.button === 3) {
             view?.history.back();
@@ -104,9 +150,9 @@ export const usePagination = (bookId: string, containerRef: React.RefObject<HTML
       const { keyName } = msg.detail;
       if (globalViewSettings?.volumeKeysToFlip) {
         if (keyName === "VolumeUp") {
-          viewPagination(view, globalViewSettings, "left");
+          turnPage(view, globalViewSettings, "left");
         } else if (keyName === "VolumeDown") {
-          viewPagination(view, globalViewSettings, "right");
+          turnPage(view, globalViewSettings, "right");
         }
       }
     } else {

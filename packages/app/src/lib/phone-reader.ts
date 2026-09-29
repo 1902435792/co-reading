@@ -1,5 +1,6 @@
 import { PHONE_MAX_WIDTH } from "@/hooks/use-is-phone";
 import { useAppSettingsStore } from "@/store/app-settings-store";
+import { useLayoutStore } from "@/store/layout-store";
 import type { ViewSettings } from "@/types/book";
 
 /**
@@ -118,6 +119,16 @@ export function rememberPhoneScrolled(scrolled: boolean) {
 
 /** 仿真翻页需要安卓原生层；网页 / 电脑上没有这个效果 */
 export const curlSupported = () => typeof window !== "undefined" && typeof window.DeepReaderNative?.curlTurn === "function";
+
+/**
+ * 这一下能不能用仿真卷页：要有安卓原生层；平板上侧栏开着时整屏截图会把侧栏一起卷走，就退回普通翻页。
+ */
+export function curlUsableNow(): boolean {
+  if (!curlSupported()) return false;
+  if (isPhoneWidth()) return true;
+  const layout = useLayoutStore.getState();
+  return !layout.isHomeActive && !layout.isNotepadVisible && !layout.isChatVisible;
+}
 
 export function setNativeCurlEnabled(on: boolean) {
   try {

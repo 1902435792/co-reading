@@ -61,6 +61,10 @@ export const useFoliateViewer = (bookId: string, bookDoc: BookDoc, config: BookC
     manager.setProgressCallback((progress: ProgressData) => {
       store.getState().setProgress(progress);
       store.getState().setLocation(progress.location);
+      // 阅读器重建（转屏、手机 / 平板布局切换）时会拿 config 里的位置重新打开这本书；
+      // 以前这里一直是「打开书那一刻」的位置，一重建就跳回去。跟着更新（不触发重渲染）。
+      const current = store.getState().config;
+      if (current && progress.location) current.location = progress.location;
     });
 
     manager.setViewSettingsCallback((updatedSettings: ViewSettings) => {

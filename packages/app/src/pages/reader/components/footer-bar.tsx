@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAutoHideControls } from "../hooks/use-auto-hide-controls";
-import { viewPagination } from "../hooks/use-pagination";
+import { turnPage } from "../hooks/use-pagination";
 import { useReaderStore, useReaderStoreApi } from "./reader-provider";
 
 const FooterBar = () => {
@@ -21,7 +21,7 @@ const FooterBar = () => {
       }
     } else {
       if (view) {
-        viewPagination(view, globalViewSettings, "left");
+        turnPage(view, globalViewSettings, "left");
       }
     }
   };
@@ -32,7 +32,7 @@ const FooterBar = () => {
       if (isScrolledMode) {
         view?.renderer.nextSection?.();
       } else {
-        viewPagination(view, globalViewSettings, "right");
+        turnPage(view, globalViewSettings, "right");
       }
     }
   };
