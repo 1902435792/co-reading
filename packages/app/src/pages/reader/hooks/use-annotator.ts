@@ -98,6 +98,12 @@ export const useAnnotator = ({ bookId }: UseAnnotatorProps) => {
     view?.deselect();
   }, [handleDismissPopup, view]);
 
+  // 安卓返回键：先收起划线菜单和选区（见 lib/android-back.ts）
+  useEffect(() => {
+    window.addEventListener("deepreader-dismiss-selection", handleDismissPopupAndSelection);
+    return () => window.removeEventListener("deepreader-dismiss-selection", handleDismissPopupAndSelection);
+  }, [handleDismissPopupAndSelection]);
+
   // 业务逻辑函数
   const handleCopy = useCallback(() => {
     if (!selection || !selection.text) return;

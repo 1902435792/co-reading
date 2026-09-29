@@ -3,6 +3,7 @@ import { Separator } from "@/components/ui/separator";
 import type { HighlightColor, HighlightStyle } from "@/types/book";
 import type { Position } from "@/utils/sel";
 import clsx from "clsx";
+import { useIsPhone } from "@/hooks/use-is-phone";
 import React, { useEffect, useMemo, useState } from "react";
 import HighlightOptions from "./highlight-options";
 import PopupButton from "./popup-button";
@@ -37,6 +38,7 @@ const AnnotationPopup: React.FC<AnnotationPopupProps> = ({
   popupHeight,
   onHighlight,
 }) => {
+  const isPhone = useIsPhone();
   const [windowSize, setWindowSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -161,7 +163,7 @@ const AnnotationPopup: React.FC<AnnotationPopupProps> = ({
         <div
           className={clsx(
             "selection-buttons flex h-full items-center",
-            isVertical ? "flex-col gap-1 px-1 py-2" : "flex-row gap-1 px-2 py-1",
+            isVertical ? "flex-col gap-1 px-1 py-2" : isPhone ? "flex-row justify-around px-1 py-0.5" : "flex-row gap-1 px-2 py-1",
           )}
         >
           {buttons.map((button, index) => (

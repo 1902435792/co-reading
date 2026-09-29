@@ -1,5 +1,6 @@
 import SettingsDialog from "@/components/settings/settings-dialog";
 import { useBookUpload } from "@/hooks/use-book-upload";
+import { useIsPhone } from "@/hooks/use-is-phone";
 import { useSafeAreaInsets } from "@/hooks/use-safe-areaInsets";
 import ChatPage from "@/pages/chat";
 import LibraryPage from "@/pages/library";
@@ -7,18 +8,29 @@ import NotesPage from "@/pages/notes";
 import SkillsPage from "@/pages/skills";
 import StatisticsPage from "@/pages/statistics";
 import { useAppSettingsStore } from "@/store/app-settings-store";
+import { useLayoutStore } from "@/store/layout-store";
 import { useLibraryStore } from "@/store/library-store";
 import { useLlamaStore } from "@/store/llama-store";
 import clsx from "clsx";
 import { Upload as UploadIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Route, Routes } from "react-router";
+import { Route, Routes, useLocation } from "react-router";
 import Sidebar from "./sidebar";
 
 const HomeLayout = () => {
   const { refreshBooks } = useLibraryStore();
   const { isSettingsDialogOpen, toggleSettingsDialog } = useAppSettingsStore();
   const insets = useSafeAreaInsets();
+  const isPhone = useIsPhone();
+  const location = useLocation();
+  const isDrawerOpen = useLayoutStore((state) => state.isHomeDrawerOpen);
+  const setDrawerOpen = useLayoutStore((state) => state.setHomeDrawerOpen);
+
+  // 手机：点了抽屉里的页面 / 标签，或者打开设置，就把抽屉收起来。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 只跟着地址和设置开关走
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [location.pathname, location.search, isSettingsDialogOpen]);
   const { isDragOver, handleDragOver, handleDragLeave, handleDrop } = useBookUpload();
 
   const isInitiating = useRef(false);
@@ -80,7 +92,31 @@ const HomeLayout = () => {
           </div>
         )}
 
-        <Sidebar />
+        {!isPhone && <Sidebar />}
+        {isPhone && (
+          <div
+            className={clsx("fixed inset-0 z-50", isDrawerOpen ? "pointer-events-auto" : "pointer-events-none")}
+            aria-hidden={!isDrawerOpen}
+          >
+            <div
+              className={clsx(
+                "absolute inset-0 bg-black/30 transition-opacity duration-200",
+                isDrawerOpen ? "opacity-100" : "opacity-0",
+              )}
+              onClick={() => setDrawerOpen(false)}
+            />
+            <div
+              className={clsx(
+                "absolute top-0 bottom-0 left-0 flex w-64 max-w-[80vw] flex-col bg-background shadow-xl transition-transform duration-200 ease-out",
+                isDrawerOpen ? "translate-x-0" : "-translate-x-full",
+              )}
+              style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+              inert={!isDrawerOpen || undefined}
+            >
+              <Sidebar className="w-full" />
+            </div>
+          </div>
+        )}
 
         <div className="h-full flex-1 overflow-hidden p-1">
           <Routes>

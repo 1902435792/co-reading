@@ -1,11 +1,13 @@
 import { Anthropic, DeepSeek, Gemini, Grok, OpenAI, OpenRouter } from "@/components/icons";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useIsPhone } from "@/hooks/use-is-phone";
 import { cn } from "@/lib/utils";
 import { useProviderStore } from "@/store/provider-store";
 import {
   BookOpenText,
   Boxes,
+  ChevronLeft,
   ChevronRight,
   Database,
   FolderCog,
@@ -81,7 +83,17 @@ export function ProviderIcons({ providerId }: { providerId: string }): React.Rea
 }
 
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
-  const [activeKey, setActiveKey] = useState<SettingsKey>("appearance");
+  const [activeKey, setActiveKeyRaw] = useState<SettingsKey>("appearance");
+  // 手机：先显示分类列表，点进去看内容，左上角「‹」返回。
+  const isPhone = useIsPhone();
+  const [phonePane, setPhonePane] = useState<"nav" | "content">("nav");
+  const setActiveKey = (key: SettingsKey) => {
+    setActiveKeyRaw(key);
+    setPhonePane("content");
+  };
+  useEffect(() => {
+    if (!open) setPhonePane("nav");
+  }, [open]);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(["model-providers"]));
   const { modelProviders } = useProviderStore();
 
@@ -269,6 +281,50 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       </div>
     );
   };
+
+  if (isPhone) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="flex h-[90vh] w-[calc(100vw-1rem)] max-w-none flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="flex-shrink-0 border-neutral-200 border-b px-3 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+            {phonePane === "content" ? (
+              <button
+                type="button"
+                onClick={() => setPhonePane("nav")}
+                className="-ml-1 flex items-center gap-1 text-left font-semibold text-base dark:text-neutral-100"
+              >
+                <ChevronLeft className="size-5" />
+                <DialogTitle className="text-base">{pageInfo[activeKey]?.title ?? "设置"}</DialogTitle>
+              </button>
+            ) : (
+              <DialogTitle className="dark:text-neutral-100">设置</DialogTitle>
+            )}
+          </DialogHeader>
+          {phonePane === "nav" ? (
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 dark:bg-neutral-900">
+              <nav className="space-y-4">
+                {settingsGroups.map((group) => (
+                  <div key={group.title} className="space-y-1">
+                    <div className="px-1.5 pb-0.5 font-medium text-[11px] text-muted-foreground tracking-wide">
+                      {group.title}
+                    </div>
+                    {group.items.map((item) => renderSidebarItem(item))}
+                  </div>
+                ))}
+              </nav>
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto pb-6 dark:bg-neutral-900">
+              {pageInfo[activeKey]?.description && (
+                <p className="px-4 pt-3 text-muted-foreground text-xs leading-relaxed">{pageInfo[activeKey]?.description}</p>
+              )}
+              {renderSettingsContent()}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

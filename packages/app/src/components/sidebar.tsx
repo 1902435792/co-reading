@@ -25,7 +25,7 @@ interface ActionButtonItem {
   onClick: () => void;
 }
 
-export default function Sidebar() {
+export default function Sidebar({ className = "w-48" }: { className?: string } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -142,7 +142,10 @@ export default function Sidebar() {
 
   return (
     <>
-      <aside ref={sidebarRef} className="z-40 flex h-full w-48 select-none flex-col overflow-hidden border-neutral-200">
+      <aside
+        ref={sidebarRef}
+        className={clsx("z-40 flex h-full select-none flex-col overflow-hidden border-neutral-200", className)}
+      >
         <div className="p-1 pt-2 pl-2">
           <SearchToggle searchQuery={searchQuery} onSearchChange={handleSearchChange} />
         </div>

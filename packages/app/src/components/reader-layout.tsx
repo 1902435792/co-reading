@@ -5,6 +5,8 @@ import NotificationDropdown from "@/components/notification-dropdown";
 import SettingsDialog from "@/components/settings/settings-dialog";
 import SideChat from "@/components/side-chat";
 import WindowControls from "@/components/window-controls";
+import { PhoneSheet } from "@/components/phone-sheet";
+import { useIsPhone } from "@/hooks/use-is-phone";
 import { useFontEvents } from "@/hooks/use-font-events";
 import ReaderViewer from "@/pages/reader";
 import { ReaderProvider } from "@/pages/reader/components/reader-provider";
@@ -13,7 +15,7 @@ import { useLayoutStore } from "@/store/layout-store";
 import { useThemeStore } from "@/store/theme-store";
 import { getOSPlatform } from "@/utils/misc";
 import { Tabs } from "app-tabs";
-import { HomeIcon } from "lucide-react";
+import { HomeIcon, Menu } from "lucide-react";
 import { Resizable } from "re-resizable";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
@@ -95,7 +97,11 @@ export default function ReaderLayout() {
     getReaderStore,
     isChatVisible,
     isNotepadVisible,
+    toggleChatSidebar,
+    toggleNotepadSidebar,
+    setHomeDrawerOpen,
   } = useLayoutStore();
+  const isPhone = useIsPhone();
   const { isDarkMode, swapSidebars } = useThemeStore();
   const { isSettingsDialogOpen, toggleSettingsDialog } = useAppSettingsStore();
   // 量出内容区宽度，给两个侧栏限宽：平板竖屏两栏都开时右边那栏不会被挤出屏幕。
@@ -143,6 +149,25 @@ export default function ReaderLayout() {
     if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
     settleTimerRef.current = setTimeout(settleSidebars, 400);
   }, [isChatVisible, isNotepadVisible]);
+
+  // 手机：打开 / 切换到一本书时，两个侧栏先收起，让书占满屏幕（共读照常在后台跑）。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 只在切书时触发
+  useEffect(() => {
+    if (!isPhone || !activeTabId) return;
+    const state = useLayoutStore.getState();
+    if (state.isChatVisible) state.toggleChatSidebar();
+    if (state.isNotepadVisible) state.toggleNotepadSidebar();
+  }, [isPhone, activeTabId]);
+
+  // 手机：两个面板同一时间只开一个，新打开的那个留下。
+  const prevPanelsRef = useRef({ chat: isChatVisible, notepad: isNotepadVisible });
+  useEffect(() => {
+    const prev = prevPanelsRef.current;
+    prevPanelsRef.current = { chat: isChatVisible, notepad: isNotepadVisible };
+    if (!isPhone || !(isChatVisible && isNotepadVisible)) return;
+    if (!prev.chat) toggleNotepadSidebar();
+    else toggleChatSidebar();
+  }, [isPhone, isChatVisible, isNotepadVisible, toggleChatSidebar, toggleNotepadSidebar]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -199,10 +224,23 @@ export default function ReaderLayout() {
           darkMode={isDarkMode}
           className="h-7"
           enableDragRegion={true}
-          marginLeft={isWindows ? 0 : 60}
+          marginLeft={isWindows || isPhone ? 0 : 60}
           pinnedLeft={
-            <div className="mx-2 flex items-center gap-2" onClick={navigateToHome}>
-              <HomeIcon className="size-5 text-neutral-700 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200" />
+            <div className="mx-2 flex items-center gap-3">
+              {isPhone && (
+                <Menu
+                  aria-label="菜单"
+                  className="size-5 text-neutral-700 dark:text-neutral-400"
+                  onClick={() => {
+                    navigateToHome();
+                    setHomeDrawerOpen(true);
+                  }}
+                />
+              )}
+              <HomeIcon
+                onClick={navigateToHome}
+                className="size-5 text-neutral-700 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
+              />
             </div>
           }
           pinnedRight={
@@ -333,6 +371,31 @@ export default function ReaderLayout() {
               </Resizable>
             </SlidingSidebar>
           );
+
+          if (isPhone) {
+            return (
+              <ReaderProvider store={store} key={tab.id}>
+                <div
+                  className="absolute inset-0 overflow-clip bg-background"
+                  style={{
+                    visibility: tab.id === activeTabId ? "visible" : "hidden",
+                    zIndex: tab.id === activeTabId ? 1 : 0,
+                  }}
+                >
+                  {/* isolate：书里各层的 z-index 只在这一层里比，面板永远盖在书上面，点面板也不会翻页 */}
+                  <div className="relative isolate h-full w-full">
+                    <ReaderViewer />
+                  </div>
+                  <PhoneSheet open={isNotepadVisible} title="笔记 · 书评区" onClose={toggleNotepadSidebar}>
+                    <NotepadContainer bookId={tab.bookId} />
+                  </PhoneSheet>
+                  <PhoneSheet open={isChatVisible} title="共读 AI" onClose={toggleChatSidebar}>
+                    <SideChat key={`chat-${tab.id}`} bookId={tab.bookId} />
+                  </PhoneSheet>
+                </div>
+              </ReaderProvider>
+            );
+          }
 
           return (
             <ReaderProvider store={store} key={tab.id}>

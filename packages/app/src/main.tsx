@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router";
 import ReaderLayout from "./components/reader-layout.tsx";
+import { installAndroidBack } from "./lib/android-back.ts";
 import { flushAllWrites } from "./lib/tauri-storage.ts";
 import { mountFontsToMainApp } from "./utils/font.ts";
 
@@ -12,6 +13,7 @@ const queryClient = new QueryClient();
 import "./index.css";
 
 mountFontsToMainApp();
+installAndroidBack();
 
 window.addEventListener("beforeunload", () => {
   flushAllWrites().catch((error) => {

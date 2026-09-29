@@ -19,6 +19,9 @@ interface LayoutStore {
   isChatVisible: boolean;
   isNotepadVisible: boolean;
   pendingNotepadAnnotationId: string | null;
+  /** 手机：首页左侧抽屉是否打开（不持久化）。 */
+  isHomeDrawerOpen: boolean;
+  setHomeDrawerOpen: (open: boolean) => void;
 
   openBook: (bookId: string, title: string) => void;
   removeTab: (tabId: string) => void;
@@ -42,6 +45,8 @@ export const useLayoutStore = create<LayoutStore>()(
       isChatVisible: true,
       isNotepadVisible: false,
       pendingNotepadAnnotationId: null,
+      isHomeDrawerOpen: false,
+      setHomeDrawerOpen: (open: boolean) => set({ isHomeDrawerOpen: open }),
 
       openBook: (bookId: string, title: string) => {
         const tabId = `reader-${bookId}`;

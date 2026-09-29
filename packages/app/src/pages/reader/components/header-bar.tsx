@@ -123,7 +123,7 @@ const HeaderBar = () => {
             title="上一章"
           >
             <ChevronLeft className="size-3.5" />
-            <span>上一章</span>
+            <span className="hidden sm:inline">上一章</span>
           </button>
 
           <span
@@ -141,7 +141,7 @@ const HeaderBar = () => {
             className="flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-1 font-medium text-neutral-500 text-xs transition-colors hover:bg-muted/60 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
             title="下一章"
           >
-            <span>下一章</span>
+            <span className="hidden sm:inline">下一章</span>
             <ChevronRight className="size-3.5" />
           </button>
         </div>
