@@ -13,7 +13,12 @@ declare global {
     DeepReaderNative?: {
       setReaderImmersive: (on: boolean) => void;
       setStatusBarVisible: (visible: boolean) => void;
+      setCurlEnabled?: (on: boolean) => void;
+      curlTurn?: (side: string) => void;
+      curlTurned?: (turned: boolean) => void;
     };
+    /** 仿真翻页：原生层截好图后调这个让书真的翻过去（silent=true 时不回调） */
+    __deepreaderCurlTurn?: (side: "left" | "right", silent?: boolean) => void;
   }
 }
 
@@ -22,9 +27,10 @@ export const PHONE_CHROME_TOGGLE = "deepreader-toggle-reader-chrome";
 /** 返回键等：收起操作栏 */
 export const PHONE_CHROME_CLOSE = "deepreader-close-reader-chrome";
 
-export type PageTurnEffect = "slide" | "fade" | "none" | "scroll";
+export type PageTurnEffect = "curl" | "slide" | "fade" | "none" | "scroll";
 
 export const PAGE_TURN_OPTIONS: { id: PageTurnEffect; label: string; hint: string }[] = [
+  { id: "curl", label: "仿真", hint: "像纸书一样从角上卷过去，可以拖着翻" },
   { id: "slide", label: "平移", hint: "左右滑动，页面跟着手指走" },
   { id: "fade", label: "淡入", hint: "轻轻一闪换页，不晃眼" },
   { id: "none", label: "无动画", hint: "直接换页，最省电" },
@@ -62,7 +68,7 @@ const PAGE_TURN_KEY = "deepreader:phonePageTurn";
 /** 手机上记住的翻页方式（单独存一份在本机，同步读取，不怕启动时设置还没读完） */
 export function getPhonePageTurn(): PageTurnEffect {
   const v = typeof localStorage !== "undefined" ? localStorage.getItem(PAGE_TURN_KEY) : null;
-  return v === "slide" || v === "fade" || v === "none" || v === "scroll" ? v : "slide";
+  return v === "curl" || v === "slide" || v === "fade" || v === "none" || v === "scroll" ? v : "slide";
 }
 
 const effectMatches = (g: ViewSettings, effect: PageTurnEffect) =>
@@ -104,4 +110,54 @@ export function rememberPhoneScrolled(scrolled: boolean) {
   } catch {
     /* ignore */
   }
+}
+
+/** 仿真翻页需要安卓原生层；网页 / 电脑上没有这个效果 */
+export const curlSupported = () => typeof window !== "undefined" && typeof window.DeepReaderNative?.curlTurn === "function";
+
+export function setNativeCurlEnabled(on: boolean) {
+  try {
+    window.DeepReaderNative?.setCurlEnabled?.(on);
+  } catch {
+    /* 不是安卓 App */
+  }
+}
+
+/** 点左右翻页（仿真）：交给原生层截图、卷页，它再回调 __deepreaderCurlTurn 让书翻过去 */
+export function nativeCurlTurn(side: "left" | "right"): boolean {
+  try {
+    if (!curlSupported()) return false;
+    window.DeepReaderNative!.curlTurn!(side);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+type CurlView = HTMLElement & {
+  goLeft: () => unknown;
+  goRight: () => unknown;
+  renderer: { start: number; getContents?: () => { index?: number }[] };
+};
+
+export function installCurlBridge() {
+  if (window.__deepreaderCurlTurn) return;
+  window.__deepreaderCurlTurn = (side, silent) => {
+    const done = (turned: boolean) => {
+      if (!silent) window.DeepReaderNative?.curlTurned?.(turned);
+    };
+    const view = Array.from(document.querySelectorAll<CurlView>("foliate-view")).find((el) =>
+      el.checkVisibility?.({ visibilityProperty: true }),
+    );
+    if (!view?.renderer) return done(false);
+    const where = () => `${view.renderer.getContents?.()?.[0]?.index ?? ""}:${Math.round(view.renderer.start)}`;
+    const before = where();
+    Promise.resolve()
+      .then(() => (side === "left" ? view.goLeft() : view.goRight()))
+      .catch(() => undefined)
+      .then(() => {
+        // 等两帧，让新页真的画出来再告诉原生层
+        requestAnimationFrame(() => requestAnimationFrame(() => done(where() !== before)));
+      });
+  };
 }

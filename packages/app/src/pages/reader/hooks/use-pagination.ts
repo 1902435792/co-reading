@@ -1,7 +1,7 @@
 import { useAppSettingsStore } from "@/store/app-settings-store";
 import type { ViewSettings } from "@/types/book";
 import type { FoliateView } from "@/types/view";
-import { PHONE_CHROME_TOGGLE, isPhoneWidth, playFadeTurn } from "@/lib/phone-reader";
+import { PHONE_CHROME_TOGGLE, isPhoneWidth, nativeCurlTurn, playFadeTurn } from "@/lib/phone-reader";
 import { eventDispatcher } from "@/utils/event";
 import { useReaderStoreApi } from "../components/reader-provider";
 
@@ -58,6 +58,7 @@ export const usePagination = (bookId: string, containerRef: React.RefObject<HTML
               } else {
                 let side: "left" | "right" = rel < 1 / 3 ? "left" : "right";
                 if (globalViewSettings.swapClickArea) side = side === "left" ? "right" : "left";
+                if (globalViewSettings.pageTurnEffect === "curl" && nativeCurlTurn(side)) return;
                 if (globalViewSettings.pageTurnEffect === "fade") playFadeTurn(bookId);
                 viewPagination(view, globalViewSettings, side);
               }

@@ -6,7 +6,7 @@ import SettingsDialog from "@/components/settings/settings-dialog";
 import SideChat from "@/components/side-chat";
 import WindowControls from "@/components/window-controls";
 import { PhoneSheet } from "@/components/phone-sheet";
-import { ensurePhonePageTurn, setNativeReaderImmersive } from "@/lib/phone-reader";
+import { ensurePhonePageTurn, installCurlBridge, setNativeReaderImmersive } from "@/lib/phone-reader";
 import { useIsPhone } from "@/hooks/use-is-phone";
 import { useFontEvents } from "@/hooks/use-font-events";
 import ReaderViewer from "@/pages/reader";
@@ -163,6 +163,7 @@ export default function ReaderLayout() {
   // 手机第一次用：翻页方式默认「分页 + 平移」（像起点那样左右翻）。等设置从存储里读完再改，免得被覆盖。
   useEffect(() => {
     if (!isPhone) return;
+    installCurlBridge();
     const run = () => ensurePhonePageTurn();
     if (useAppSettingsStore.persist.hasHydrated()) run();
     else return useAppSettingsStore.persist.onFinishHydration(run);

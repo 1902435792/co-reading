@@ -84,6 +84,9 @@ function Segmented<T extends string>({
   );
 }
 
+/** 这几项调过之后压过书本自带样式（不然很多书调了看不出变化） */
+const TYPOGRAPHY_FIELDS: LayoutKey[] = ["lineHeight", "paragraphMargin", "textIndent", "letterSpacing"];
+
 function LayoutSlider({ field, value }: { field: LayoutKey; value: number }) {
   const range = LAYOUT_RANGES[field];
   const [local, setLocal] = useState(value);
@@ -101,7 +104,12 @@ function LayoutSlider({ field, value }: { field: LayoutKey; value: number }) {
         step={range.step}
         aria-label={range.label}
         onValueChange={(next) => setLocal(clampLayoutValue(field, next[0] ?? range.min))}
-        onValueCommit={(next) => updateViewSettings({ [field]: clampLayoutValue(field, next[0] ?? range.min) })}
+        onValueCommit={(next) =>
+          updateViewSettings({
+            [field]: clampLayoutValue(field, next[0] ?? range.min),
+            ...(TYPOGRAPHY_FIELDS.includes(field) ? { layoutCustomized: true } : {}),
+          })
+        }
       />
     </div>
   );
@@ -116,7 +124,7 @@ export function ReadingPageControls({
   const [prefs, setPrefs] = useAnnotationPrefs();
   const currentBg = getReadingBgId(view.userStylesheet);
   const layoutFields: LayoutKey[] = compact
-    ? ["lineHeight", "paragraphMargin", "readingWidth", "gapPercent"]
+    ? ["lineHeight", "paragraphMargin", "textIndent", "readingWidth", "gapPercent"]
     : ["lineHeight", "paragraphMargin", "readingWidth", "gapPercent", "textIndent", "letterSpacing"];
   const layoutValue = (field: LayoutKey): number => {
     if (field === "readingWidth") return view.readingWidth ?? 0;
@@ -193,6 +201,15 @@ export function ReadingPageControls({
               <LayoutSlider key={field} field={field} value={layoutValue(field)} />
             ))}
           </div>
+          {view.layoutCustomized && !view.overrideLayout && (
+            <button
+              type="button"
+              onClick={() => updateViewSettings({ layoutCustomized: false })}
+              className="mt-3 text-primary text-xs underline-offset-2 hover:underline"
+            >
+              恢复书本原排版（行距、段距、缩进用书自带的）
+            </button>
+          )}
           {!compact && (
             <label className="mt-4 flex items-center justify-between gap-3 text-sm">
               <span>

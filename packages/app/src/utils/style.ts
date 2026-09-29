@@ -128,6 +128,7 @@ const getColorStyles = (overrideColor: boolean, invertImgColorInDark: boolean, t
 
 const getLayoutStyles = (
   overrideLayout: boolean,
+  layoutCustomized: boolean,
   paragraphMargin: number,
   lineSpacing: number,
   wordSpacing: number,
@@ -186,10 +187,10 @@ const getLayoutStyles = (
     bottom: -10px;
   }
   p, blockquote, dd, div:not(:has(*:not(b, a, em, i, strong, u, span))) {
-    line-height: ${lineSpacing} ${overrideLayout ? "!important" : ""};
+    line-height: ${lineSpacing} ${overrideLayout || layoutCustomized ? "!important" : ""};
     word-spacing: ${wordSpacing}px ${overrideLayout ? "!important" : ""};
-    letter-spacing: ${letterSpacing}px ${overrideLayout ? "!important" : ""};
-    text-indent: ${vertical ? textIndent * 1.2 : textIndent}em ${overrideLayout ? "!important" : ""};
+    letter-spacing: ${letterSpacing}px ${overrideLayout || layoutCustomized ? "!important" : ""};
+    text-indent: ${vertical ? textIndent * 1.2 : textIndent}em ${overrideLayout || layoutCustomized ? "!important" : ""};
     ${justify ? `text-align: justify ${overrideLayout ? "!important" : ""};` : ""}
     ${!justify && overrideLayout ? "text-align: unset !important;" : ""};
     -webkit-hyphens: ${hyphenate ? "auto" : "manual"};
@@ -211,10 +212,10 @@ const getLayoutStyles = (
     text-indent: initial !important;
   }
   p {
-    ${vertical ? `margin-left: ${paragraphMargin}em ${overrideLayout ? "!important" : ""};` : ""}
-    ${vertical ? `margin-right: ${paragraphMargin}em ${overrideLayout ? "!important" : ""};` : ""}
-    ${!vertical ? `margin-top: ${paragraphMargin}em ${overrideLayout ? "!important" : ""};` : ""}
-    ${!vertical ? `margin-bottom: ${paragraphMargin}em ${overrideLayout ? "!important" : ""};` : ""}
+    ${vertical ? `margin-left: ${paragraphMargin}em ${overrideLayout || layoutCustomized ? "!important" : ""};` : ""}
+    ${vertical ? `margin-right: ${paragraphMargin}em ${overrideLayout || layoutCustomized ? "!important" : ""};` : ""}
+    ${!vertical ? `margin-top: ${paragraphMargin}em ${overrideLayout || layoutCustomized ? "!important" : ""};` : ""}
+    ${!vertical ? `margin-bottom: ${paragraphMargin}em ${overrideLayout || layoutCustomized ? "!important" : ""};` : ""}
   }
   div {
     ${vertical && overrideLayout ? `margin-left: ${paragraphMargin}em !important;` : ""}
@@ -426,6 +427,7 @@ export const getStyles = (viewSettings: ViewSettings, themeCode?: ThemeCode) => 
   }
   const layoutStyles = getLayoutStyles(
     viewSettings.overrideLayout!,
+    !!viewSettings.layoutCustomized,
     viewSettings.paragraphMargin!,
     viewSettings.lineHeight!,
     viewSettings.wordSpacing!,

@@ -2,6 +2,7 @@ import { useUICSS } from "@/hooks/use-ui-css";
 import { ensurePhonePageTurn } from "@/lib/phone-reader";
 import type { BookDoc } from "@/lib/document";
 import { useAppSettingsStore } from "@/store/app-settings-store";
+import { useLayoutStore } from "@/store/layout-store";
 import { useThemeStore } from "@/store/theme-store";
 import type { BookConfig } from "@/types/book";
 import type { ViewSettings } from "@/types/book";
@@ -110,10 +111,23 @@ export const useFoliateViewer = (bookId: string, bookDoc: BookDoc, config: BookC
     };
   }, []);
 
+  // 后台标签页里的书先不重排（切夜间模式时只处理眼前这本，切回来再补），手机上切主题不那么卡
+  const isTabVisible = useLayoutStore((s) => !s.isHomeActive && s.activeTabId === `reader-${bookId}`);
+  const stylesDirtyRef = useRef(false);
+  const lastStyleKeyRef = useRef<unknown[]>([]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
     const view = managerRef.current?.getView();
     if (view?.renderer && isInitialized.current) {
+      const key = [themeCode, isDarkMode, settings.globalViewSettings, bookDoc.rendition?.layout];
+      const changed = key.some((v, i) => v !== lastStyleKeyRef.current[i]);
+      if (!isTabVisible) {
+        if (changed) stylesDirtyRef.current = true;
+        return;
+      }
+      if (!changed && !stylesDirtyRef.current) return;
+      stylesDirtyRef.current = false;
+      lastStyleKeyRef.current = key;
       const styles = getStyles(settings.globalViewSettings, themeCode);
       view.renderer.setStyles?.(styles);
 
@@ -122,7 +136,7 @@ export const useFoliateViewer = (bookId: string, bookDoc: BookDoc, config: BookC
         docs.forEach(({ doc }) => applyFixedlayoutStyles(doc, settings.globalViewSettings, themeCode));
       }
     }
-  }, [themeCode, isDarkMode, settings.globalViewSettings, bookDoc.rendition?.layout]);
+  }, [themeCode, isDarkMode, settings.globalViewSettings, bookDoc.rendition?.layout, isTabVisible]);
 
   // 页宽 / 页边距：同步给版面管理器并重排一次
   const readingWidth = settings.globalViewSettings.readingWidth ?? 0;

@@ -912,6 +912,8 @@ export class Paginator extends HTMLElement {
     if (state.pinched) return;
     state.pinched = globalThis.visualViewport.scale > 1;
     if (this.scrolled || state.pinched) return;
+    // 安卓仿真翻页时，左右拖动交给原生层卷页，这里不再跟着手指挪页面
+    if (this.nativeSwipe || globalThis.__deepreaderNativeSwipe) return;
     if (e.touches.length > 1) {
       if (this.#touchScrolled) e.preventDefault();
       return;
@@ -933,7 +935,7 @@ export class Paginator extends HTMLElement {
   }
   #onTouchEnd() {
     this.#touchScrolled = false;
-    if (this.scrolled) return;
+    if (this.scrolled || this.nativeSwipe || globalThis.__deepreaderNativeSwipe) return;
 
     // XXX: Firefox seems to report scale as 1... sometimes...?
     // at this point I'm basically throwing `requestAnimationFrame` at

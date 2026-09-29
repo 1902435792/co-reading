@@ -50,3 +50,7 @@ lto = true
 codegen-units = 1
 strip = "symbols"
 panic = "abort"
+
+# 安卓启动卡死修复：用打过补丁的 tauri（见 vendor/tauri/src/manager/webview.rs）
+[patch.crates-io]
+tauri = { path = "vendor/tauri" }

@@ -224,7 +224,7 @@ export const LAYOUT_RANGES = {
   paragraphMargin: { min: 0, max: 2.5, step: 0.25, label: "段距" },
   readingWidth: { min: 0, max: 1400, step: 20, label: "页宽" },
   gapPercent: { min: 0, max: 20, step: 1, label: "页边距" },
-  textIndent: { min: 0, max: 4, step: 0.5, label: "首行缩进" },
+  textIndent: { min: 0, max: 4, step: 0.5, label: "段首缩进" },
   letterSpacing: { min: 0, max: 4, step: 0.25, label: "字间距" },
 } as const;
 

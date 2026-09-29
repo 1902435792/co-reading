@@ -103,8 +103,8 @@ export interface BookLayout {
   readingWidth?: number;
   maxBlockSize: number;
   animated: boolean;
-  /** 手机翻页效果：平移 / 淡入 / 无动画（上下滚动用 scrolled 表示） */
-  pageTurnEffect?: "slide" | "fade" | "none";
+  /** 手机翻页效果：仿真 / 平移 / 淡入 / 无动画（上下滚动用 scrolled 表示） */
+  pageTurnEffect?: "curl" | "slide" | "fade" | "none";
   writingMode: WritingMode;
   vertical: boolean;
   rtl: boolean;
@@ -125,6 +125,8 @@ export interface BookStyle {
   theme: string;
   overrideFont: boolean;
   overrideLayout: boolean;
+  /** 用户调过行距 / 段距 / 首行缩进 / 字间距：这几项压过书本自带样式 */
+  layoutCustomized?: boolean;
   overrideColor: boolean;
   codeHighlighting: boolean;
   codeLanguage: string;

@@ -5,6 +5,8 @@ import {
   PHONE_CHROME_TOGGLE,
   type PageTurnEffect,
   applyPageTurnEffect,
+  curlSupported,
+  setNativeCurlEnabled,
   setNativeStatusBarVisible,
 } from "@/lib/phone-reader";
 import { useAppSettingsStore } from "@/store/app-settings-store";
@@ -114,6 +116,19 @@ export function PhoneReaderOverlay({ bookId, isTabVisible }: { bookId: string; i
   }, [open, isTabVisible]);
   useEffect(() => () => setNativeStatusBarVisible(false), []);
 
+  // 仿真翻页：只在看书、分页、菜单和面板都收着时让原生层接管左右拖动
+  const { isChatVisible, isNotepadVisible } = useLayoutStore();
+  const curlOn = isTabVisible && !open && !isChatVisible && !isNotepadVisible && currentEffect(globalViewSettings) === "curl";
+  const curlMode = currentEffect(globalViewSettings) === "curl" && curlSupported();
+  useEffect(() => {
+    setNativeCurlEnabled(curlOn);
+  }, [curlOn]);
+  useEffect(() => {
+    // 仿真模式下书页本身不跟手指挪（交给原生层卷页），否则截图会歪一点
+    (window as unknown as { __deepreaderNativeSwipe?: boolean }).__deepreaderNativeSwipe = curlMode;
+  }, [curlMode]);
+  useEffect(() => () => setNativeCurlEnabled(false), []);
+
   const close = useCallback(() => {
     setOpen(false);
     setTocOpen(false);
@@ -151,7 +166,7 @@ export function PhoneReaderOverlay({ bookId, isTabVisible }: { bookId: string; i
         <button
           type="button"
           aria-label="收起操作栏"
-          className="pointer-events-auto absolute inset-0 cursor-default bg-black/5"
+          className="pointer-events-auto absolute inset-0 cursor-default bg-transparent"
           onClick={close}
         />
       )}
@@ -288,7 +303,7 @@ export function PhoneReaderOverlay({ bookId, isTabVisible }: { bookId: string; i
               <div className="px-3 pt-2 pb-1 text-[11px] text-muted-foreground">
                 分页时：点左边上一页，点右边下一页，也可以左右滑；点中间呼出菜单
               </div>
-              {PAGE_TURN_OPTIONS.map((opt) => (
+              {PAGE_TURN_OPTIONS.filter((opt) => opt.id !== "curl" || curlSupported()).map((opt) => (
                 <button
                   key={opt.id}
                   type="button"
