@@ -9,9 +9,11 @@ import { PhoneSheet } from "@/components/phone-sheet";
 import { FocusedThreadSheet } from "@/components/notepad/focused-thread-sheet";
 import {
   ensurePhonePageTurn,
+  curlRegionSupported,
   curlSupported,
   installCurlBridge,
   setNativeCurlEnabled,
+  setNativeCurlRegion,
   setNativeHomeStatusBarHidden,
   setNativeReaderImmersive,
   syncNativeEdgeColor,
@@ -181,8 +183,9 @@ export default function ReaderLayout() {
     else return useAppSettingsStore.persist.onFinishHydration(run);
   }, [isPhone]);
 
-  // 安卓平板：仿真翻页时让原生层接管左右拖动。侧栏、设置、弹出菜单开着时交还给网页，
-  // 免得拖设置里的滑块、在侧栏里划动时把书页卷起来。（手机由 PhoneReaderChrome 管）
+  // 安卓平板：仿真翻页时让原生层接管书页上的左右拖动。设置、弹出菜单开着时交还给网页，
+  // 免得拖设置里的滑块时把书页卷起来。侧栏开着也能翻：原生层只卷书页那一块，
+  // 在侧栏里划动不受影响（旧版原生层不支持时，还是要侧栏收起）。（手机由 PhoneReaderChrome 管）
   const tabletCurlWanted = useAppSettingsStore(
     (s) =>
       !isPhone &&
@@ -208,7 +211,41 @@ export default function ReaderLayout() {
     return () => observer.disconnect();
   }, [tabletCurlWanted]);
   const tabletCurlOn =
-    tabletCurlWanted && !isHomeActive && Boolean(activeTabId) && !isNotepadVisible && !isChatVisible && !overlayOpen;
+    tabletCurlWanted &&
+    !isHomeActive &&
+    Boolean(activeTabId) &&
+    (curlRegionSupported() || (!isNotepadVisible && !isChatVisible)) &&
+    !overlayOpen;
+  // 把书页（当前这本书的整块阅读区）在屏幕上的位置告诉原生层：侧栏开关 / 拖宽 / 转屏时重新量
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 侧栏开关时要重新量
+  useEffect(() => {
+    if (isPhone || !tabletCurlOn || !activeTabId) {
+      setNativeCurlRegion(null);
+      return;
+    }
+    let last = "";
+    const measure = () => {
+      const el = document.getElementById(`gridcell-${activeTabId}`);
+      const r = el?.getBoundingClientRect();
+      const rect = r && r.width > 0 && r.height > 0 ? r : null;
+      const key = rect ? `${rect.left},${rect.top},${rect.width},${rect.height}` : "";
+      if (key === last) return;
+      last = key;
+      setNativeCurlRegion(rect);
+    };
+    measure();
+    // 侧栏开合有过渡：过渡中和结束后各量一次
+    const timers = [120, 320, 650].map((ms) => setTimeout(measure, ms));
+    const el = document.getElementById(`gridcell-${activeTabId}`);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (el) observer?.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      for (const t of timers) clearTimeout(t);
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [isPhone, tabletCurlOn, activeTabId, isNotepadVisible, isChatVisible]);
   useEffect(() => {
     if (isPhone) return;
     setNativeCurlEnabled(tabletCurlOn);
@@ -221,23 +258,24 @@ export default function ReaderLayout() {
   useEffect(() => {
     setNativeReaderImmersive(readerOnPhone);
   }, [readerOnPhone]);
-  // 首页也藏起系统状态栏（只给摄像头让位）
+  // 手机首页、平板（首页和看书）都藏起系统状态栏，只给摄像头让位；从顶边往下划会临时出来
   useEffect(() => {
-    setNativeHomeStatusBarHidden(isPhone);
-  }, [isPhone]);
+    setNativeHomeStatusBarHidden(true);
+  }, []);
   // 顶部摄像头那条留白、底部手势条那条留白跟界面同色（换主题、回书架、进书时都重新取）
   const edgeThemeKey = useThemeStore((s) => s.themeColor);
   const edgeViewKey = useAppSettingsStore((s) => s.settings.globalViewSettings);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 换主题、回书架、进书时重新取色
   useEffect(() => {
-    if (!isPhone) return;
-    const run = () => syncNativeEdgeColor(!readerOnPhone);
+    // 平板一直取顶部（标签栏）的颜色：状态栏藏起后顶上那条留白跟它同色
+    const run = () => syncNativeEdgeColor(!isPhone || !readerOnPhone);
     const t1 = setTimeout(run, 120);
     const t2 = setTimeout(run, 700);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, [isPhone, readerOnPhone, isDarkMode, edgeThemeKey, edgeViewKey]);
+  }, [isPhone, readerOnPhone, isHomeActive, isDarkMode, edgeThemeKey, edgeViewKey]);
 
   // 手机：两个面板同一时间只开一个，新打开的那个留下。
   const prevPanelsRef = useRef({ chat: isChatVisible, notepad: isNotepadVisible });

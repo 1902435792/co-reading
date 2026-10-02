@@ -8,6 +8,9 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.graphics.Rect
 import android.os.Bundle
 import android.view.ActionMode
 import android.view.Menu
@@ -50,6 +53,14 @@ class MainActivity : TauriActivity() {
   private var curlStart = 0L
   /** 正在选字（拖选区手柄时不能当成翻页） */
   private var selectionActive = false
+  /**
+   * 平板：只卷书页那一块（WebView 内的像素坐标）。null = 整个 WebView（手机）。
+   * 侧栏开着时，截图、卷页层、能起手翻页的地方都只限这一块，侧栏不受影响。
+   */
+  private var curlRegion: Rect? = null
+  /** 这一次翻页的书页区域在窗口里的位置（起手时算好，拖动中不变） */
+  private var curlWinTop = 0
+  private var curlWidth = 1
 
   // 返回键 / 返回手势交给网页处理（关面板、回首页）；网页说没东西可关，就退到后台而不是结束 App。
   override val handleBackNavigation: Boolean = false
@@ -131,14 +142,56 @@ class MainActivity : TauriActivity() {
     if (old != null && !old.isRecycled && old.width == w && old.height == h) old
     else Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
 
+  /** 书页区域（WebView 内坐标，夹在 WebView 范围内）；没设就是整个 WebView */
+  private fun regionIn(w: WebView): Rect {
+    val full = Rect(0, 0, w.width, w.height)
+    val r = curlRegion ?: return full
+    val out = Rect(r)
+    return if (out.intersect(full) && out.width() > 0 && out.height() > 0) out else full
+  }
+
+  /** 书页区域在窗口里的位置（触摸坐标就是窗口坐标） */
+  private fun regionInWindow(): Rect? {
+    val w = webViewRef ?: return null
+    val loc = IntArray(2)
+    w.getLocationInWindow(loc)
+    val r = regionIn(w)
+    r.offset(loc[0], loc[1])
+    return r
+  }
+
+  /** 卷页层只盖住书页区域 */
+  private fun layoutCurlView(v: CurlView) {
+    val w = webViewRef
+    val content = findViewById<View>(android.R.id.content)
+    val lp = if (w == null || curlRegion == null) {
+      FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+    } else {
+      val r = regionIn(w)
+      val wl = IntArray(2)
+      val cl = IntArray(2)
+      w.getLocationInWindow(wl)
+      content.getLocationInWindow(cl)
+      FrameLayout.LayoutParams(r.width(), r.height()).apply {
+        gravity = Gravity.TOP or Gravity.START
+        leftMargin = wl[0] - cl[0] - content.paddingLeft + r.left
+        topMargin = wl[1] - cl[1] - content.paddingTop + r.top
+      }
+    }
+    // 没变就不动（设一次会让整页重新排版，翻页开头会顿一下）
+    val old = v.layoutParams as? FrameLayout.LayoutParams
+    if (old != null && old.width == lp.width && old.height == lp.height && old.gravity == lp.gravity &&
+      old.leftMargin == lp.leftMargin && old.topMargin == lp.topMargin
+    ) return
+    v.layoutParams = lp
+  }
+
   /** 手指一按下就用 GPU 拷一张当前页（很快、不占主线程），真开始翻时直接用 */
   private fun prefetchCurrentPage() {
     val w = webViewRef ?: return
     if (w.width <= 0 || w.height <= 0 || android.os.Build.VERSION.SDK_INT < 26) return
-    val bmp = sized(bmpCur, w.width, w.height).also { bmpCur = it }
-    val loc = IntArray(2)
-    w.getLocationInWindow(loc)
-    val rect = android.graphics.Rect(loc[0], loc[1], loc[0] + w.width, loc[1] + w.height)
+    val rect = regionInWindow() ?: return
+    val bmp = sized(bmpCur, rect.width(), rect.height()).also { bmpCur = it }
     val seq = ++prefetchSeq
     prefetchReady = false
     prefetchPending = true
@@ -171,7 +224,7 @@ class MainActivity : TauriActivity() {
   }
 
   private fun dragProgress(x: Float): Float {
-    val w = (curlView?.width ?: 1).coerceAtLeast(1).toFloat()
+    val w = curlWidth.coerceAtLeast(1).toFloat()
     val dx = x - downX
     return if (curlSide == "right") (-dx / w * 1.15f) else (1f - dx / w * 1.15f)
   }
@@ -181,7 +234,8 @@ class MainActivity : TauriActivity() {
     v.progress = dragProgress(x)
     // 手指往上/往下，页角也跟着抬起/压低
     val dy = y - downY
-    v.dragLift = (if (v.fromBottom) -dy else dy).coerceIn(-v.height * 0.12f, v.height * 0.35f)
+    val h = (if (v.height > 0) v.height else curlWidth).toFloat()
+    v.dragLift = (if (v.fromBottom) -dy else dy).coerceIn(-h * 0.12f, h * 0.35f)
   }
 
   /** 预取回来了（或等不及了）：真正开始卷，并追上手指现在的位置 */
@@ -200,10 +254,13 @@ class MainActivity : TauriActivity() {
     val w = webViewRef ?: return null
     if (w.width <= 0 || w.height <= 0) return null
     val t0 = SystemClock.uptimeMillis()
+    val r = regionIn(w)
     return try {
-      val bmp = if (other) sized(bmpOther, w.width, w.height).also { bmpOther = it }
-      else sized(bmpCur, w.width, w.height).also { bmpCur = it }
-      w.draw(Canvas(bmp))
+      val bmp = if (other) sized(bmpOther, r.width(), r.height()).also { bmpOther = it }
+      else sized(bmpCur, r.width(), r.height()).also { bmpCur = it }
+      val c = Canvas(bmp)
+      c.translate(-r.left.toFloat(), -r.top.toFloat())
+      w.draw(c)
       android.util.Log.d("DRCurl", "softdraw ${SystemClock.uptimeMillis() - t0}ms other=$other")
       bmp
     } catch (e: Throwable) {
@@ -216,7 +273,7 @@ class MainActivity : TauriActivity() {
     val v = CurlView(this)
     v.visibility = View.GONE
     (findViewById<View>(android.R.id.content) as ViewGroup).addView(
-      v, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+      v, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
     )
     curlView = v
     return v
@@ -242,7 +299,10 @@ class MainActivity : TauriActivity() {
     val t0 = SystemClock.uptimeMillis()
     val shot = currentPageShot() ?: return false
     val v = ensureCurlView()
-    v.fromBottom = fromY > v.height * 0.35f || v.height == 0
+    layoutCurlView(v)
+    curlWinTop = regionInWindow()?.top ?: 0
+    curlWidth = shot.width
+    v.fromBottom = fromY - curlWinTop > shot.height * 0.35f
     v.dragLift = 0f
     usedCache = false
     if (side == "right") {
@@ -359,7 +419,9 @@ class MainActivity : TauriActivity() {
         downX = ev.x
         downY = ev.y
         downTime = SystemClock.uptimeMillis()
-        deciding = !selectionActive
+        // 平板侧栏开着：只有按在书页区域里才可能是翻页，按在侧栏里完全交给网页
+        val inPage = curlRegion == null || regionInWindow()?.contains(ev.x.toInt(), ev.y.toInt()) != false
+        deciding = !selectionActive && inPage
         velocity?.recycle()
         velocity = VelocityTracker.obtain().also { it.addMovement(ev) }
         if (deciding) prefetchCurrentPage()
@@ -467,13 +529,29 @@ class MainActivity : TauriActivity() {
       }
     }
 
+    /**
+     * 平板：书页区域（WebView 内的像素，网页已乘过 devicePixelRatio）。w 或 h <= 0 表示整个 WebView。
+     * 侧栏开关、拖宽、转屏时网页会重新告诉我们。
+     */
+    @JavascriptInterface
+    fun setCurlRegion(x: Int, y: Int, w: Int, h: Int) {
+      runOnUiThread {
+        val next = if (w > 0 && h > 0) Rect(x, y, x + w, y + h) else null
+        if (next == curlRegion) return@runOnUiThread
+        curlRegion = next
+        // 区域变了：缓存的截图尺寸 / 位置都不对了
+        prevKey = null
+        prefetchReady = false
+      }
+    }
+
     /** 点左右翻页时用仿真效果："left" 上一页 / "right" 下一页 */
     @JavascriptInterface
     fun curlTurn(side: String) {
       runOnUiThread {
         if (side != "left" && side != "right") return@runOnUiThread
-        val v = ensureCurlView()
-        if (beginCurl(side, v.height.toFloat())) finishCurl(true)
+        // 点击翻页：从下角翻起
+        if (beginCurl(side, Float.MAX_VALUE)) finishCurl(true)
       }
     }
 

@@ -15,6 +15,7 @@ declare global {
       setReaderImmersive: (on: boolean) => void;
       setStatusBarVisible: (visible: boolean) => void;
       setCurlEnabled?: (on: boolean) => void;
+      setCurlRegion?: (x: number, y: number, w: number, h: number) => void;
       setHomeStatusBarHidden?: (hidden: boolean) => void;
       setEdgeColor?: (r: number, g: number, b: number) => void;
       curlTurn?: (side: string) => void;
@@ -64,7 +65,8 @@ export function setNativeStatusBarVisible(visible: boolean) {
 
 /** 淡入翻页：翻页的同时让书页从半透明淡回来。 */
 export function playFadeTurn(bookId: string) {
-  const el = document.getElementById(`foliate-view-${bookId}`) ?? document.querySelector(`#gridcell-${bookId} foliate-view`);
+  const el =
+    document.getElementById(`foliate-view-${bookId}`) ?? document.querySelector(`#gridcell-${bookId} foliate-view`);
   (el as HTMLElement | null)?.animate?.([{ opacity: 0.15 }, { opacity: 1 }], { duration: 260, easing: "ease-out" });
 }
 
@@ -77,9 +79,7 @@ export function getPhonePageTurn(): PageTurnEffect {
 }
 
 const effectMatches = (g: ViewSettings, effect: PageTurnEffect) =>
-  effect === "scroll"
-    ? g.scrolled
-    : !g.scrolled && g.pageTurnEffect === effect && g.animated === (effect === "slide");
+  effect === "scroll" ? g.scrolled : !g.scrolled && g.pageTurnEffect === effect && g.animated === (effect === "slide");
 
 /** 改翻页方式：只改设置，阅读器那边会自动切换分页 / 滚动和动画 */
 export function applyPageTurnEffect(effect: PageTurnEffect) {
@@ -118,7 +118,8 @@ export function rememberPhoneScrolled(scrolled: boolean) {
 }
 
 /** 仿真翻页需要安卓原生层；网页 / 电脑上没有这个效果 */
-export const curlSupported = () => typeof window !== "undefined" && typeof window.DeepReaderNative?.curlTurn === "function";
+export const curlSupported = () =>
+  typeof window !== "undefined" && typeof window.DeepReaderNative?.curlTurn === "function";
 
 /**
  * 这一下能不能用仿真卷页：要有安卓原生层；平板上侧栏开着时整屏截图会把侧栏一起卷走，就退回普通翻页。
@@ -127,7 +128,44 @@ export function curlUsableNow(): boolean {
   if (!curlSupported()) return false;
   if (isPhoneWidth()) return true;
   const layout = useLayoutStore.getState();
-  return !layout.isHomeActive && !layout.isNotepadVisible && !layout.isChatVisible;
+  if (layout.isHomeActive) return false;
+  // 新版原生层只卷书页那一块，侧栏开着也能用；旧版原生层卷整屏，还是要侧栏收起
+  return curlRegionSupported() || (!layout.isNotepadVisible && !layout.isChatVisible);
+}
+
+/** 原生层能不能只卷书页那一块（平板侧栏开着时用） */
+export function curlRegionSupported(): boolean {
+  try {
+    return typeof window.DeepReaderNative?.setCurlRegion === "function";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 平板：告诉原生层书页在屏幕上的位置（只截这块、只卷这块、只在这块里起手）。
+ * 传 null 表示整个屏幕（手机）。
+ */
+export function setNativeCurlRegion(rect: { left: number; top: number; width: number; height: number } | null) {
+  try {
+    const native = window.DeepReaderNative;
+    if (!native?.setCurlRegion) return;
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      native.setCurlRegion(0, 0, 0, 0);
+      return;
+    }
+    const r = window.devicePixelRatio || 1;
+    const x = Math.max(0, Math.round(rect.left * r));
+    const y = Math.max(0, Math.round(rect.top * r));
+    native.setCurlRegion(
+      x,
+      y,
+      Math.round((rect.left + rect.width) * r) - x,
+      Math.round((rect.top + rect.height) * r) - y,
+    );
+  } catch {
+    /* 不是安卓 App */
+  }
 }
 
 export function setNativeCurlEnabled(on: boolean) {
