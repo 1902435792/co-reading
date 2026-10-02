@@ -152,7 +152,29 @@ DeepReader 可以通过 OpenAI-compatible Provider 接入 VCP Bridge。推荐为
 - VCP Bridge 是可选外部组件，不随 DeepReader 安装包一同分发；
 - 不要把 API Key、访问令牌、私人日记或 Provider 配置提交到仓库。
 
-### 快速配置
+### 一键配置（推荐）
+
+打开「设置 → AI → AI 共读与 Nova」，点「一键配置 VCP」：
+
+- **VCP 在这台电脑上**：选 VCPToolBox 文件夹，填角色名、怎么称呼你、日记本名字（都有默认值）。DeepReader 会写入 4 个 `deepreader-*` Profile 和对应的提示词，建好 `dailynote/<日记本名>/` 文件夹，再自动读取 Bridge 端口、检查连接、建好提供商。
+  - 只新增文件，同名的一律跳过，不改你已有的 Profile 和设置。Bridge 会自动加载，不用重启 VCP。
+  - 密钥要点「从 VCP 配置读取」或手动粘贴，界面上不显示。
+- **VCP 在别的电脑上**：选「导出配置包」，把导出的 `Plugin`、`dailynote` 复制进那台电脑的 VCPToolBox，再选「连接已配置好的 VCP」，填地址和密钥。
+- **安卓**：在电脑上配好 VCP 以后，在手机上选「连接已配置好的 VCP」。
+
+向导建的提供商用 `deepreader-*` 这套 Profile：
+
+| 用途 | Profile |
+| --- | --- |
+| 自动共读 | `deepreader-coreading` |
+| 记忆提取 | `deepreader-memory` |
+| 后台小请求 | `deepreader-plain` |
+| 阅读日记 | `deepreader-coreading-diary` |
+| 问答 | 不加前缀，用 VCP 的默认角色 |
+
+Bridge 没有日记专用接口时，会自动改走 `deepreader-coreading-diary` Profile 的普通通道（没有专用接口那层严格确认，写完请到日记本里核对）。手动配的提供商不受影响，仍用下面这套。
+
+### 手动配置
 
 1. 在 DeepReader「设置 → AI → 模型提供商」中添加 OpenAI-compatible Provider：
    - 基础 URL：`http://127.0.0.1:3100/v1`（不要把 Profile 写进 URL）；

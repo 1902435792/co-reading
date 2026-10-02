@@ -77,18 +77,51 @@ export const BRIDGE_PURPOSE_PROFILE: Record<BridgePurpose, string> = {
   plain: "deepreader-plain",
 };
 
+/**
+ * 一键配置向导写进别人 VCP 的那套 Profile（名字带 deepreader- 前缀，避免和对方已有的撞名）。
+ * 问答不打包 Profile：不加前缀，用对方 VCP 的默认角色。
+ */
+export const DEEPREADER_PURPOSE_PROFILE: Record<BridgePurpose, string> = {
+  coreading: "deepreader-coreading",
+  reading: "",
+  memory: "deepreader-memory",
+  diary: "",
+  plain: "deepreader-plain",
+};
+
+/** 日记专用路由不存在时，改走普通通道用的 Profile。 */
+export const DEEPREADER_DIARY_PROFILE = "deepreader-coreading-diary";
+
+/** 提供商用哪套 Profile：不填 = 原来那套（coreading-lite / reading / memory-extract）。 */
+export type VcpProfileSet = "classic" | "deepreader";
+
+export function purposeProfilesFor(profileSet?: VcpProfileSet | null): Record<BridgePurpose, string> {
+  return profileSet === "deepreader" ? DEEPREADER_PURPOSE_PROFILE : BRIDGE_PURPOSE_PROFILE;
+}
+
 /** 程序认识的 Profile：这些前缀会被按用途替换；别的前缀当作用户自定义，原样保留。 */
-const KNOWN_PROFILES = new Set([...VCP_BRIDGE_PROFILES.map((item) => item.id), "coreading", "deepreader-plain"]);
+const KNOWN_PROFILES = new Set([
+  ...VCP_BRIDGE_PROFILES.map((item) => item.id),
+  "coreading",
+  "deepreader-plain",
+  "deepreader-coreading",
+  "deepreader-memory",
+]);
 
 /**
  * 把设置里选的模型换成这个用途真正要发给 Bridge 的模型 ID。
  * - 没前缀或是认识的前缀：换成用途对应的 Profile；
  * - 自定义前缀：保留；
- * - fast：去掉末尾的 -high（不深度思考，快很多）。
+ * - fast：去掉末尾的 -high（不深度思考，快很多）；
+ * - profileSet：向导配置的提供商用 deepreader-* 这套。
  */
-export function bridgeModelIdFor(modelId: string, purpose: BridgePurpose, options: { fast?: boolean } = {}): string {
+export function bridgeModelIdFor(
+  modelId: string,
+  purpose: BridgePurpose,
+  options: { fast?: boolean; profileSet?: VcpProfileSet | null } = {},
+): string {
   const { profile, model } = splitBridgeModelId(modelId);
   const base = options.fast ? model.replace(/-high$/u, "") || model : model;
   if (profile && !KNOWN_PROFILES.has(profile)) return `${profile}/${base}`;
-  return composeBridgeModelId(BRIDGE_PURPOSE_PROFILE[purpose], base);
+  return composeBridgeModelId(purposeProfilesFor(options.profileSet)[purpose], base);
 }

@@ -5,11 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useProviderStore } from "@/store/provider-store";
 import { fetch as fetchTauri } from "@tauri-apps/plugin-http";
-import { isVcpBridgeUrl } from "@/components/nova/nova-memory";
-import { CheckCircle2, CircleAlert, Loader2 } from "lucide-react";
+import { isVcpBridgeProvider } from "@/components/nova/nova-memory";
+import { CheckCircle2, CircleAlert, Loader2, Wand2 } from "lucide-react";
 import { useState } from "react";
 import { openSettings } from "./open-settings";
 import { JevSettingsSection } from "./jev-settings-section";
+import { VcpSetupWizard } from "./vcp-setup-wizard";
 
 const DEFAULT_BRIDGE_ORIGIN = "http://127.0.0.1:3100";
 const NOVA_POSITION_KEY = "deepreader:nova-companion-position";
@@ -36,7 +37,8 @@ type CheckState =
 
 export default function CoReadingSettings() {
   const { modelProviders } = useProviderStore();
-  const bridgeProviders = modelProviders.filter((provider) => isVcpBridgeUrl(provider.baseUrl));
+  const bridgeProviders = modelProviders.filter((provider) => isVcpBridgeProvider(provider));
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [origin, setOrigin] = useState(() => toOrigin(bridgeProviders[0]?.baseUrl) ?? DEFAULT_BRIDGE_ORIGIN);
   const [check, setCheck] = useState<CheckState>({ status: "idle" });
   const [positionReset, setPositionReset] = useState(false);
@@ -76,11 +78,19 @@ export default function CoReadingSettings() {
   return (
     <div className="space-y-8 p-4 pt-3">
       <section className="rounded-lg bg-muted/80 p-4">
-        <h2 className="text mb-1 dark:text-neutral-200">VCP Bridge 连接</h2>
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <h2 className="text dark:text-neutral-200">VCP Bridge 连接</h2>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setWizardOpen(true)}>
+            <Wand2 className="mr-1 size-3.5" />
+            一键配置 VCP
+          </Button>
+        </div>
         <p className="mb-4 text-muted-foreground text-xs leading-relaxed">
-          共读和问答通过 VCP Bridge 调用 VCP 的 Agent。先在「模型提供商」里添加一个 OpenAI-compatible 提供商，基础 URL
-          填 <code>http://127.0.0.1:3100/v1</code>。
+          共读和问答通过 VCP Bridge 调用 VCP 的 Agent。第一次用：点「一键配置 VCP」，选一下 VCPToolBox
+          文件夹就能配好。也可以手动在「模型提供商」里添加一个 OpenAI-compatible 提供商，基础 URL 填{" "}
+          <code>http://127.0.0.1:3100/v1</code>。
         </p>
+        <VcpSetupWizard open={wizardOpen} onOpenChange={setWizardOpen} />
 
         <div className="mb-3 text-xs">
           {bridgeProviders.length > 0 ? (
@@ -90,7 +100,11 @@ export default function CoReadingSettings() {
             </span>
           ) : (
             <span className="text-amber-700 dark:text-amber-300">
-              还没有指向 Bridge（端口 3100）的提供商。
+              还没有指向 Bridge 的提供商。
+              <button type="button" className="ml-1 underline underline-offset-2" onClick={() => setWizardOpen(true)}>
+                一键配置
+              </button>
+              <span className="mx-1">或</span>
               <button
                 type="button"
                 className="ml-1 underline underline-offset-2"
@@ -107,9 +121,10 @@ export default function CoReadingSettings() {
             <p className="font-medium">Profile 自动处理</p>
             <p className="mt-1 text-muted-foreground">
               不用手写 Profile 前缀，程序会按用途自动加：自动共读用 <code>coreading-lite</code>
-              （只召回阅读日记，不进 OneRing），问答用 <code>reading</code>，记忆提取用{" "}
-              <code>memory-extract</code>，写日记直接用模型名。模型列表里放基础模型（如{" "}
-              <code>gemini-3.8-flash</code>）就行；以前带前缀的条目也照常能用。
+              （只召回阅读日记，不进 OneRing），问答用 <code>reading</code>，记忆提取用 <code>memory-extract</code>
+              ，写日记直接用模型名。模型列表里放基础模型（如 <code>gemini-3.8-flash</code>
+              ）就行；以前带前缀的条目也照常能用。用「一键配置 VCP」建的提供商改用 <code>deepreader-*</code> 这套
+              Profile，问答用 VCP 的默认角色。
             </p>
           </div>
         )}
@@ -153,9 +168,8 @@ export default function CoReadingSettings() {
         <h2 className="text mb-3 dark:text-neutral-200">共读模型怎么配</h2>
         <ol className="list-decimal space-y-1.5 pl-4 text-muted-foreground text-xs leading-relaxed">
           <li>
-            添加模型：设置 → 模型提供商 → VCP Bridge → 添加模型，只填基础模型名，比如{" "}
-            <code>gemini-3.8-flash-high</code> 或 <code>gemini-3.8-flash</code>，
-            <b>不用写 Profile 前缀</b>。
+            添加模型：设置 → 模型提供商 → VCP Bridge → 添加模型，只填基础模型名，比如 <code>gemini-3.8-flash-high</code>{" "}
+            或 <code>gemini-3.8-flash</code>，<b>不用写 Profile 前缀</b>。
           </li>
           <li>选共读模型：在阅读页右侧「共读」面板顶部选；不单独选，就跟随问答用的模型。</li>
           <li>
@@ -163,8 +177,9 @@ export default function CoReadingSettings() {
             <code>memory-extract</code>；写日记走专用的「阅读器日记 Nova」，仍然是 Nova 本人在写。
           </li>
           <li>
-            带 <code>-high</code> = 深度思考：想得更细，每次约 1–3 分钟；不带 = 快，通常几秒到十几秒。想临时提速，打开共读面板里的「快速模型」开关（会自动去掉{" "}
-            <code>-high</code>），不用改模型。
+            带 <code>-high</code> = 深度思考：想得更细，每次约 1–3 分钟；不带 =
+            快，通常几秒到十几秒。想临时提速，打开共读面板里的「快速模型」开关（会自动去掉 <code>-high</code>
+            ），不用改模型。
           </li>
           <li>VCP 那边不锁定模型，以这里选的为准。共读请求最长等 180 秒，超时进度会保留，可以稍后重试。</li>
         </ol>
@@ -208,16 +223,26 @@ export default function CoReadingSettings() {
           <label className="flex items-center justify-between gap-3 text-sm">
             <span>
               深夜陪读
-              <span className="block text-muted-foreground text-xs">23 点到 5 点换成困倦表情，每 45 分钟提醒一次休息</span>
+              <span className="block text-muted-foreground text-xs">
+                23 点到 5 点换成困倦表情，每 45 分钟提醒一次休息
+              </span>
             </span>
-            <Switch checked={novaExtras.lateNight} onCheckedChange={(value) => updateNovaExtras({ lateNight: value })} />
+            <Switch
+              checked={novaExtras.lateNight}
+              onCheckedChange={(value) => updateNovaExtras({ lateNight: value })}
+            />
           </label>
           <label className="flex items-center justify-between gap-3 text-sm">
             <span>
               书架上的 Nova
-              <span className="block text-muted-foreground text-xs">书卡上显示一句话：很久没翻、快读完、刚读完、新书</span>
+              <span className="block text-muted-foreground text-xs">
+                书卡上显示一句话：很久没翻、快读完、刚读完、新书
+              </span>
             </span>
-            <Switch checked={novaExtras.shelfLines} onCheckedChange={(value) => updateNovaExtras({ shelfLines: value })} />
+            <Switch
+              checked={novaExtras.shelfLines}
+              onCheckedChange={(value) => updateNovaExtras({ shelfLines: value })}
+            />
           </label>
           <label className="flex items-center justify-between gap-3 text-sm">
             <span>
@@ -226,14 +251,17 @@ export default function CoReadingSettings() {
                 同一页停留 1.5 分钟以上，Nova 会问要不要帮你拆解；配置了 Jev 时先判断这页是否真的难懂。默认关闭
               </span>
             </span>
-            <Switch checked={novaExtras.stuckHint} onCheckedChange={(value) => updateNovaExtras({ stuckHint: value })} />
+            <Switch
+              checked={novaExtras.stuckHint}
+              onCheckedChange={(value) => updateNovaExtras({ stuckHint: value })}
+            />
           </label>
           <label className="flex items-center justify-between gap-3 text-sm">
             <span>
               章末卡片
               <span className="block text-muted-foreground text-xs">
-                认真读完一章（2 分钟以上）翻到下一章时，Nova 问要不要做一张小结 + 3 道自测题的卡片，可导出到 Obsidian。默认关闭；右键
-                Nova 随时可以手动做
+                认真读完一章（2 分钟以上）翻到下一章时，Nova 问要不要做一张小结 + 3 道自测题的卡片，可导出到
+                Obsidian。默认关闭；右键 Nova 随时可以手动做
               </span>
             </span>
             <Switch
@@ -249,7 +277,10 @@ export default function CoReadingSettings() {
                 会问要不要交给 VCP 写日记；只提议，不自动写，同一本书 6 小时内最多提一次。需要问答模型指向 VCP Bridge
               </span>
             </span>
-            <Switch checked={novaExtras.diaryPrompt} onCheckedChange={(value) => updateNovaExtras({ diaryPrompt: value })} />
+            <Switch
+              checked={novaExtras.diaryPrompt}
+              onCheckedChange={(value) => updateNovaExtras({ diaryPrompt: value })}
+            />
           </label>
           <label className="flex items-center justify-between gap-3 text-sm">
             <span>
@@ -258,7 +289,10 @@ export default function CoReadingSettings() {
                 这一页提到书架上的另一本书、或出现你在其他书里记下的概念时，Nova 提一句；每处只提一次，最多 3 分钟一次
               </span>
             </span>
-            <Switch checked={novaExtras.crossBook} onCheckedChange={(value) => updateNovaExtras({ crossBook: value })} />
+            <Switch
+              checked={novaExtras.crossBook}
+              onCheckedChange={(value) => updateNovaExtras({ crossBook: value })}
+            />
           </label>
           <label className="flex items-center justify-between gap-3 text-sm">
             <span>
@@ -301,8 +335,8 @@ export default function CoReadingSettings() {
         </div>
         <p className="mt-3 text-muted-foreground text-xs">
           沉浸阅读：点阅读页顶栏的 ⤢ 按钮、按 Z 或右键 Nova 进入，只留正文和小头像 Nova；按 Esc 退出。
-          <br />
-          问 Nova：选中文字后点弹条里的「问Nova」、或选中后直接点 Nova、或把文字拖到 Nova 身上，可以让她解释、反驳、联想或总结。
+          <br />问 Nova：选中文字后点弹条里的「问Nova」、或选中后直接点 Nova、或把文字拖到 Nova
+          身上，可以让她解释、反驳、联想或总结。
         </p>
       </section>
     </div>

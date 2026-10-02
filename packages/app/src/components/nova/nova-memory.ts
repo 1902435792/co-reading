@@ -53,6 +53,11 @@ export function isVcpBridgeUrl(url?: string | null): boolean {
   }
 }
 
+/** 提供商是不是 VCP Bridge：向导建的（vcpBridge）或地址看起来像 Bridge。 */
+export function isVcpBridgeProvider(provider?: { baseUrl?: string; vcpBridge?: boolean } | null): boolean {
+  return provider?.vcpBridge === true || isVcpBridgeUrl(provider?.baseUrl);
+}
+
 /** 这些 Bridge Profile 会接入 OneRing，并带着写日记的指南，不适合批量的自动共读。 */
 const HEAVY_PROFILES = new Set(["coreading", "reading", "nova"]);
 

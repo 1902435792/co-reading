@@ -23,4 +23,8 @@ type ModelProvider = {
   baseUrl?: string;
   baseUrlHelpUrl?: string;
   models: Model[];
+  /** 一键配置向导建的 VCP Bridge 提供商：即使端口不是 3100 也按 Bridge 处理。 */
+  vcpBridge?: boolean;
+  /** 这个 Bridge 用哪套 Profile；不填 = 原来那套（coreading-lite / reading / memory-extract）。 */
+  vcpProfileSet?: "classic" | "deepreader";
 };

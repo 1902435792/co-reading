@@ -1,5 +1,5 @@
 import { useProviderStore } from "@/store/provider-store";
-import { isVcpBridgeUrl } from "@/components/nova/nova-memory";
+import { isVcpBridgeProvider } from "@/components/nova/nova-memory";
 import { type BridgePurpose, bridgeModelIdFor } from "@/components/settings/vcp-bridge-models";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
@@ -110,8 +110,8 @@ export function createModelInstance(providerId: string, modelId: string, options
 
   // 返回模型实例
   const requestModelId =
-    options.purpose && isVcpBridgeUrl(provider.baseUrl)
-      ? bridgeModelIdFor(modelId, options.purpose, { fast: options.fast })
+    options.purpose && isVcpBridgeProvider(provider)
+      ? bridgeModelIdFor(modelId, options.purpose, { fast: options.fast, profileSet: provider.vcpProfileSet })
       : modelId;
   return providerInstance(requestModelId);
 }

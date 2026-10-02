@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { isVcpBridgeUrl } from "@/components/nova/nova-memory";
+import { isVcpBridgeProvider } from "@/components/nova/nova-memory";
 import { Pencil, Plus, RefreshCcw, Sparkles, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import ModelEditDialog from "./model-edit-dialog";
@@ -110,7 +110,7 @@ export default function ModelsManagement({
     setShowClearConfirm(false);
   };
 
-  const isBridge = isVcpBridgeUrl(provider?.baseUrl);
+  const isBridge = isVcpBridgeProvider(provider);
   const baseModels = useMemo(
     () => (isBridge ? bridgeBaseModels((provider?.models ?? []).map((model) => model.id)) : undefined),
     [isBridge, provider?.models],

@@ -35,6 +35,33 @@ export function buildCoReadingDiaryRequest(
   return { ...payload, model: modelId };
 }
 
+/**
+ * 对方的 Bridge 没有日记专用路由（返回 404）时，改走普通的 /chat/completions：
+ * 用 deepreader-coreading-diary Profile，把同样的请求 JSON 当作用户消息发过去。
+ * 显式触发标志由这里补上（专用路由原本由服务端补）。
+ */
+export function resolveChatCompletionsEndpoint(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/u, "");
+  if (!trimmed) throw new Error("当前问答 Agent 模型缺少可用的服务地址");
+  return `${trimmed}/chat/completions`;
+}
+
+export function buildCoReadingDiaryFallbackRequest(
+  payload: CoReadingDiaryPayload,
+  model: string,
+  profile: string,
+): { model: string; stream: false; messages: Array<{ role: "user"; content: string }> } {
+  // 先走和专用路由同样的校验（条数、来源一致）。
+  const checked = buildCoReadingDiaryRequest(payload, model);
+  const slash = checked.model.indexOf("/");
+  const base = slash > 0 ? checked.model.slice(slash + 1) : checked.model;
+  return {
+    model: `${profile}/${base}`,
+    stream: false,
+    messages: [{ role: "user", content: JSON.stringify({ userExplicitlyTriggered: true, ...payload }) }],
+  };
+}
+
 export function buildCoReadingDiaryHeaders(apiKey: string): Record<string, string> {
   const providerApiKey = apiKey.trim();
   if (!providerApiKey) throw new Error("当前问答 Agent 模型缺少可用的 API Key");

@@ -6,7 +6,7 @@ import { useProviderStore } from "@/store/provider-store";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { NOVA_STATIC_AVATAR } from "./nova-assets";
-import { type DiaryTrigger, diaryProposalText, isVcpBridgeUrl, shouldProposeDiary } from "./nova-memory";
+import { type DiaryTrigger, diaryProposalText, isVcpBridgeProvider, shouldProposeDiary } from "./nova-memory";
 
 const OPEN_EVENT = "deepreader:open-coreading-diary";
 const proposedKey = (bookId: string) => `deepreader:nova-diary-proposed:${bookId}`;
@@ -17,7 +17,7 @@ export function isDiaryRouteReady(): boolean {
   const selected = state.selectedModel;
   if (!selected) return false;
   const provider = state.modelProviders.find((item) => item.provider === selected.providerId && item.active);
-  return Boolean(provider?.apiKey?.trim()) && isVcpBridgeUrl(provider?.baseUrl);
+  return Boolean(provider?.apiKey?.trim()) && isVcpBridgeProvider(provider);
 }
 
 export function openCoReadingDiary(bookId: string, bookTitle: string) {

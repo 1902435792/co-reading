@@ -6,6 +6,7 @@ import {
   bridgeModelName,
   composeBridgeModelId,
   missingBridgePresets,
+  purposeProfilesFor,
   splitBridgeModelId,
 } from "./vcp-bridge-models.ts";
 
@@ -38,7 +39,10 @@ test("bridgeModelIdFor adds the purpose profile automatically", () => {
   assert.equal(bridgeModelIdFor("memory-extract/gemini-3.8-flash", "diary"), "gemini-3.8-flash");
   // 认识的前缀按用途替换。
   assert.equal(bridgeModelIdFor("memory-extract/gemini-3.8-flash", "reading"), "reading/gemini-3.8-flash");
-  assert.equal(bridgeModelIdFor("coreading/gemini-3.8-flash-high", "coreading"), "coreading-lite/gemini-3.8-flash-high");
+  assert.equal(
+    bridgeModelIdFor("coreading/gemini-3.8-flash-high", "coreading"),
+    "coreading-lite/gemini-3.8-flash-high",
+  );
   // 自定义前缀原样保留。
   assert.equal(bridgeModelIdFor("snow/gemini-3.8-flash", "reading"), "snow/gemini-3.8-flash");
 });
@@ -46,7 +50,7 @@ test("bridgeModelIdFor adds the purpose profile automatically", () => {
 test("bridgeModelIdFor fast drops -high", () => {
   assert.equal(
     bridgeModelIdFor("coreading-lite/gemini-3.8-flash-high", "coreading", { fast: true }),
-    "coreading-lite/gemini-3.8-flash"
+    "coreading-lite/gemini-3.8-flash",
   );
   assert.equal(bridgeModelIdFor("gemini-3.8-flash", "coreading", { fast: true }), "coreading-lite/gemini-3.8-flash");
   assert.equal(bridgeModelIdFor("snow/x-high", "coreading", { fast: true }), "snow/x");
@@ -55,4 +59,40 @@ test("bridgeModelIdFor fast drops -high", () => {
 test("后台小请求走纯净 Profile，不注入人格", () => {
   assert.equal(bridgeModelIdFor("gemini-3.8-flash-high", "plain"), "deepreader-plain/gemini-3.8-flash-high");
   assert.equal(bridgeModelIdFor("reading/gemini-3.8-flash", "plain"), "deepreader-plain/gemini-3.8-flash");
+});
+
+test("向导配置的提供商改用 deepreader-* 这套 Profile", () => {
+  const set = { profileSet: "deepreader" as const };
+  assert.equal(bridgeModelIdFor("gemini-3.8-flash", "coreading", set), "deepreader-coreading/gemini-3.8-flash");
+  assert.equal(bridgeModelIdFor("gemini-3.8-flash", "memory", set), "deepreader-memory/gemini-3.8-flash");
+  assert.equal(bridgeModelIdFor("gemini-3.8-flash", "plain", set), "deepreader-plain/gemini-3.8-flash");
+  // 问答不加前缀：用对方 VCP 的默认角色。
+  assert.equal(bridgeModelIdFor("gemini-3.8-flash", "reading", set), "gemini-3.8-flash");
+  assert.equal(bridgeModelIdFor("reading/gemini-3.8-flash", "reading", set), "gemini-3.8-flash");
+  assert.equal(bridgeModelIdFor("gemini-3.8-flash", "diary", set), "gemini-3.8-flash");
+  // 原来那套的前缀会被换掉；自定义前缀照旧保留。
+  assert.equal(
+    bridgeModelIdFor("coreading-lite/gemini-3.8-flash-high", "coreading", set),
+    "deepreader-coreading/gemini-3.8-flash-high",
+  );
+  assert.equal(bridgeModelIdFor("snow/gemini-3.8-flash", "coreading", set), "snow/gemini-3.8-flash");
+  assert.equal(
+    bridgeModelIdFor("deepreader-coreading/x-high", "coreading", { ...set, fast: true }),
+    "deepreader-coreading/x",
+  );
+});
+
+test("不填 profileSet 时行为和以前完全一样", () => {
+  for (const purpose of ["coreading", "reading", "memory", "diary", "plain"] as const) {
+    assert.equal(
+      bridgeModelIdFor("gemini-3.8-flash", purpose, { profileSet: "classic" }),
+      bridgeModelIdFor("gemini-3.8-flash", purpose),
+    );
+  }
+  assert.deepEqual(purposeProfilesFor(undefined), purposeProfilesFor("classic"));
+  // deepreader-* 前缀在原来那套里也会被换回去（向导配置过又改回来的情况）。
+  assert.equal(
+    bridgeModelIdFor("deepreader-coreading/gemini-3.8-flash", "coreading"),
+    "coreading-lite/gemini-3.8-flash",
+  );
 });
