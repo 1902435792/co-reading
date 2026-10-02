@@ -319,7 +319,7 @@ cd src-tauri/gen/android
 
 打完用 `apksigner verify <apk>` 确认已签名。
 
-> 注意：安卓原生部分（仿真翻页 `CurlView.kt`、全屏与返回键处理 `MainActivity.kt` 等）目前只在 `src-tauri/gen/android/` 里，没有进仓库。重新执行 `tauri android init` 或换一台电脑时需要另外备份和恢复。
+> 注意：`src-tauri/gen/` 不进仓库。手动改过的安卓原生文件（仿真翻页 `CurlView.kt`、`MainActivity.kt` 等）备份在 `packages/app/android-native/`。重新执行 `tauri android init` 或换电脑后，用 `bash packages/app/android-native/restore.sh` 恢复；改了 gen/ 里的原生文件后，用 `backup.sh` 同步回来再提交。
 
 ## 项目结构
 
