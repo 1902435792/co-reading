@@ -72,14 +72,49 @@ DeepReader 将电子书阅读、AI 对话、自动共读、人工笔记、AI 书
 
 ## 安装与运行
 
-### 普通用户
+### 普通用户：选哪个安装包
 
-请从本仓库的 [Releases](https://github.com/1902435792/nova-reading/releases) 页面下载适合系统的安装包。
+| 设备 | 安装包 | 界面 |
+| ---- | ------ | ---- |
+| Windows 电脑 | `DeepReader-电脑版-Windows-x64-setup.exe`（NSIS） | 电脑版：左右侧栏，批注栏与问答 / 共读双链 |
+| 安卓手机 | `DeepReader-手机平板版-Android-arm64.apk` | 手机版（竖屏宽度 ≤ 600px 时）：起点式全屏阅读 |
+| 安卓平板 | 同一个 APK，按屏幕宽度自动切换 | 电脑版界面 + 触控翻页、仿真翻页 |
+| macOS | 暂无现成安装包，可从源码构建 | 电脑版 |
 
-- **Windows**：使用 NSIS `.exe` 安装包。Windows 10 若无法启动，请确认已安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。
-- **macOS**：根据处理器架构选择对应构建；未签名或 ad-hoc 签名构建可能需要在系统安全设置中手动允许。
+安装包请从本仓库的 [Releases](https://github.com/1902435792/nova-reading/releases) 页面下载。维护者本机打好的包统一放在 `D:\DeepReader-安装包\<版本>\`，附 `SHA256SUMS.txt` 校验；之前的包在「旧版」子文件夹里。
+
+- **Windows**：运行 `.exe` 安装。Windows 10 若无法启动，请确认已安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。
+- **安卓手机 / 平板**：把 APK 传到设备上点开安装，第一次需要允许「安装未知来源应用」。目前只提供 arm64 包（近几年的手机和平板基本都是）。只有用同一份签名证书打的新包才能覆盖升级、保留书库；签名不同时，系统会要求先卸载。
+- **macOS**：根据处理器架构自行构建；未签名或 ad-hoc 签名的构建可能需要在系统安全设置里手动允许。
 
 当前版本不提供应用内自动更新。升级时请重新下载安装包；覆盖安装前建议备份重要数据。
+
+## 手机 / 平板 / 电脑：有什么不同
+
+三端用同一套代码，主题色、阅读背景（仿纸纹理）、行距 / 段距 / 页宽等页面控制、划线批注、自动共读和 Nova 都一样。主要区别在布局和操作：
+
+**手机（竖屏 ≤ 600px）**
+
+- 起点式全屏阅读：看书时藏起状态栏、标签栏和顶 / 底栏，只留章节名和页码；
+- 点书页中间呼出操作栏（返回、搜索、笔记、共读 AI；上一章 / 进度条 / 下一章；目录、翻页方式、夜间、设置）；
+- 点左 1/3 上一页、右 1/3 下一页，也可以左右滑动；翻页方式可选仿真 / 平移 / 淡入 / 无动画 / 上下滚动（默认平移）；
+- 首页左栏改成抽屉；笔记和 AI 改成从底部滑出的整屏面板，同时只开一个；设置先列表后详情；
+- 点书上的批注会从底部滑上来一张单条卡片（原文 + 评论 + 楼层），往下拉收起；点墨点弹出 Nova 的边注；
+- 返回键 / 返回手势依次关闭菜单、选区、面板，然后回到首页。
+
+**安卓平板**
+
+- 保持电脑版界面（左右侧栏、书评区双链）；
+- 仿真翻页可以拖着卷；音量键、点屏幕两侧都能翻页；侧栏、设置、弹出菜单开着时，手势自动交还给页面；
+- 转屏或切换布局时不白屏，也不会跳回旧位置。
+
+**电脑**
+
+- 左侧批注栏（按线程显示，最新在上，分得清「我」和 Nova）+ 右侧问答 / 共读栏，可以对调、拖宽，开合有滑动动画；
+- 分页模式下点页面左右约三成翻页；滚轮 / 触控板一次手势只翻一页；键盘方向键翻页；
+- 选中文字点「评论」写想法，原文自动加波浪线，可以让 Nova 回评（Jev 判断该解释还是说感受）；
+- Ctrl+Z 撤销、Ctrl+Y 重做划线和高亮；
+- 适合接入 VCP Bridge（见下文）。
 
 ### 首次配置
 
@@ -256,6 +291,35 @@ Rust 的 msvc 工具链必须依赖 Visual Studio 的 C++ 链接器。如果不�
 - **`can't find crate for std`、`only metadata stub found`、`handle_alloc_error`、`0xc0000409`**：通常是内存不足（16 GB 内存时默认 16 个并行任务太多），或者和旧 msvc 编译缓存混用了。请设置 `CARGO_BUILD_JOBS=4`，并使用单独的 `CARGO_TARGET_DIR`。
 - **`resource path binaries\woff2_compress-x86_64-pc-windows-gnu.exe doesn't exist`**：没有完成第 3 步。
 - **下载 WiX 失败**：MSI 安装包需要联网下载 WiX，只构建 NSIS 时加 `--bundles nsis`。
+
+### 构建安卓 APK（手机 / 平板）
+
+环境（维护者本机都装在 `D:\Android\`）：
+
+- JDK 17（`JAVA_HOME`）、Android SDK（platform-tools、build-tools、platforms，`ANDROID_HOME`）、NDK 27.3（`NDK_HOME`）；
+- Rust 安卓目标：`rustup target add aarch64-linux-android`；
+- 没有 Visual Studio 时，主机侧和桌面版一样用 GNU 工具链（`RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-gnu`）。安卓产物单独放在 `CARGO_TARGET_DIR=packages/app/src-tauri/target-android`，不要和桌面版的 `target-gnu` 混用。
+
+签名：`gen/android/app/build.gradle.kts` 读 `DEEPREADER_SIGNING_CONFIG` 指向的 JSON（默认 `D:/Android/signing/config.json`，里面写 keystore 路径和密码）。没有这个文件时打出来的 release 包未签名，装不上。**keystore 一定要备份好**：丢了以后新包无法覆盖升级旧包。
+
+```bash
+cd packages/app
+pnpm tauri android build --apk --target aarch64
+# 产物：src-tauri/gen/android/app/build/outputs/apk/arm64/release/app-arm64-release.apk
+```
+
+Windows 上如果最后一步报 `SeCreateSymbolicLinkPrivilege`（没有权限建符号链接），说明 Rust 部分已经编好，只是没能链接进安卓工程。手动补上：
+
+```bash
+cp src-tauri/target-android/aarch64-linux-android/release/libdeepreader_lib.so \
+   src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a/
+cd src-tauri/gen/android
+./gradlew.bat assembleArm64Release -x rustBuildArm64Release --no-daemon
+```
+
+打完用 `apksigner verify <apk>` 确认已签名。
+
+> 注意：安卓原生部分（仿真翻页 `CurlView.kt`、全屏与返回键处理 `MainActivity.kt` 等）目前只在 `src-tauri/gen/android/` 里，没有进仓库。重新执行 `tauri android init` 或换一台电脑时需要另外备份和恢复。
 
 ## 项目结构
 
