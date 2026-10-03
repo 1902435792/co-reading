@@ -4,7 +4,6 @@
 # 放到仓库的 .github/workflows/android-apk.yml 之后：
 #   · 推 v* 标签：构建 + 签名，APK 同时挂到该标签的「草稿 Release」（和 release.yml 的桌面包放一起）
 #   · 手动 Run workflow：只构建并上传成 Actions 产物（artifact），不碰 Release
-#   · 临时：推送 feat/android 分支也会跑一次（同样只出 artifact）；试跑完请删掉 on.push.branches 那两行
 #
 # 需要在 GitHub 仓库 Settings → Secrets and variables → Actions 里添加 4 个 secret
 # （就是本机 D:/Android/signing/config.json 里的四个字段；缺任何一个就只会出【未签名】APK）：
@@ -29,10 +28,6 @@ on:
   push:
     tags:
       - 'v*'
-    # TEMP（试跑用）：不合并进 main，推送 feat/android 分支也会触发一次。
-    # 注意：开着它时，该分支上每次推送都会触发完整构建（十几分钟起），试跑通过后请立刻删掉下面两行。
-    branches:
-      - feat/android
   workflow_dispatch:
 
 # 同一个 ref 同时只跑一个，避免重复上传
