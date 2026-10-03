@@ -1,0 +1,221 @@
+# =============================================================================
+# Android APK（arm64，手机 / 平板）—— 草稿：还没推送、还没在 GitHub 上跑过
+#
+# 放到仓库的 .github/workflows/android-apk.yml 之后：
+#   · 推 v* 标签：构建 + 签名，APK 同时挂到该标签的「草稿 Release」（和 release.yml 的桌面包放一起）
+#   · 手动 Run workflow：只构建并上传成 Actions 产物（artifact），不碰 Release
+#
+# 需要在 GitHub 仓库 Settings → Secrets and variables → Actions 里添加 4 个 secret
+# （就是本机 D:/Android/signing/config.json 里的四个字段；缺任何一个就只会出【未签名】APK）：
+#   ANDROID_KEYSTORE_BASE64    keystore 文件的 base64，PowerShell 一行生成：
+#                              [Convert]::ToBase64String([IO.File]::ReadAllBytes("<keystore 路径>"))
+#   ANDROID_KEYSTORE_PASSWORD  对应 storePassword
+#   ANDROID_KEY_ALIAS          对应 keyAlias
+#   ANDROID_KEY_PASSWORD       对应 keyPassword
+# 必须用和现有安装包同一个 keystore 签名，新包才能覆盖升级、保留书库。
+#
+# 和本机流程（README「构建安卓 APK」）的对应关系：
+#   · gen/ 不进仓库 → 先 tauri android init，再用 android-native/restore.sh 还原手改的原生文件
+#   · 签名 → 把 secrets 写成临时 JSON，经 DEEPREADER_SIGNING_CONFIG 交给 build.gradle.kts（密码不进仓库）
+#   · README 里 Windows 的 SeCreateSymbolicLinkPrivilege 问题只出在 Windows，Linux 运行器遇不到
+#
+# 首次运行如果在 Rust 编译阶段报缺系统库（pkg-config / libssl 之类），
+# 在 "Install Rust" 之前加一步 sudo apt-get install -y <缺的包> 即可。
+# =============================================================================
+name: Android APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# 同一个 ref 同时只跑一个，避免重复上传
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # 把 APK 挂到 Release 需要
+
+env:
+  NDK_VERSION: 27.3.13750724 # = NDK r27d，对应 README 里的「NDK 27.3」；ubuntu-latest 镜像已预装
+
+jobs:
+  android:
+    name: Build Android APK (arm64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9 # 和 release.yml 保持一致
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: 'pnpm'
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Rust stable and Android target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './packages/app/src-tauri -> target'
+          key: android-arm64
+
+      - name: Pin Android NDK 27.3
+        run: |
+          # 镜像已预装 NDK 27.3.13750724、android-36、build-tools 36；这里只做固定，缺了再兜底安装
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          NDK_DIR="$SDK_ROOT/ndk/$NDK_VERSION"
+          if [[ ! -d "$NDK_DIR" ]]; then
+            echo "NDK $NDK_VERSION 未预装，用 sdkmanager 安装"
+            yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+            "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION"
+          fi
+          {
+            echo "NDK_HOME=$NDK_DIR"
+            echo "ANDROID_NDK_HOME=$NDK_DIR"
+            echo "ANDROID_NDK_ROOT=$NDK_DIR"
+          } >> "$GITHUB_ENV"
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Sync version from tag
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          node -e "const fs=require('fs');const p='packages/app/src-tauri/tauri.conf.json';const d=JSON.parse(fs.readFileSync(p));d.version=process.env.TAG.replace(/^v/,'');fs.writeFileSync(p,JSON.stringify(d,null,2));"
+
+      - name: Prepare release signing
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [[ -n "$ANDROID_KEYSTORE_BASE64" && -n "$ANDROID_KEYSTORE_PASSWORD" && -n "$ANDROID_KEY_ALIAS" && -n "$ANDROID_KEY_PASSWORD" ]]; then
+            KEYSTORE="$RUNNER_TEMP/release.keystore"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+            if [[ ! -s "$KEYSTORE" ]]; then
+              echo "::error::ANDROID_KEYSTORE_BASE64 解码后是空文件，请检查 secret"
+              exit 1
+            fi
+            # 字段名和本机 config.json 一致；build.gradle.kts 通过 DEEPREADER_SIGNING_CONFIG 读取
+            jq -n \
+              --arg storeFile "$KEYSTORE" \
+              --arg storePassword "$ANDROID_KEYSTORE_PASSWORD" \
+              --arg keyAlias "$ANDROID_KEY_ALIAS" \
+              --arg keyPassword "$ANDROID_KEY_PASSWORD" \
+              '{storeFile: $storeFile, storePassword: $storePassword, keyAlias: $keyAlias, keyPassword: $keyPassword}' \
+              > "$RUNNER_TEMP/signing-config.json"
+            echo "DEEPREADER_SIGNING_CONFIG=$RUNNER_TEMP/signing-config.json" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::没有配置安卓签名 secrets：只会生成【未签名】APK（装不上，仅用于验证流程）"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Init Android project (src-tauri/gen is not in the repo)
+        working-directory: packages/app
+        run: pnpm tauri android init --ci
+
+      - name: Restore hand-edited native files
+        # 在仓库根目录执行；覆盖 gen/android 里对应的文件（仿真翻页、MainActivity、签名读取等）
+        run: bash packages/app/android-native/restore.sh
+
+      - name: Cache Gradle
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('packages/app/android-native/**', 'pnpm-lock.yaml', 'packages/app/src-tauri/Cargo.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Build APK (arm64, release)
+        working-directory: packages/app
+        run: pnpm tauri android build --apk --target aarch64
+
+      - name: Locate and verify APK
+        id: apk
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          OUT="packages/app/src-tauri/gen/android/app/build/outputs/apk"
+          APK="$(find "$OUT" -name '*.apk' | head -n 1)"
+          if [[ -z "$APK" ]]; then
+            echo "::error::没有找到 APK 产物（$OUT）"
+            exit 1
+          fi
+          echo "找到：$APK"
+          if [[ "$SIGNED" == "true" ]]; then
+            APKSIGNER="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -name apksigner | sort -V | tail -n 1)"
+            # 打印证书指纹，可以和现有安装包的签名对一下
+            "$APKSIGNER" verify --print-certs "$APK"
+          fi
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Name the APK
+        id: name
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          APK: ${{ steps.apk.outputs.path }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then SUFFIX="$GITHUB_REF_NAME"; else SUFFIX="${GITHUB_SHA::7}"; fi
+          NAME="DeepReader-Android-arm64-$SUFFIX"
+          if [[ "$SIGNED" != "true" ]]; then NAME="$NAME-UNSIGNED"; fi
+          mkdir -p dist-apk
+          cp "$APK" "dist-apk/$NAME.apk"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          {
+            echo "### $NAME.apk"
+            echo "- 大小：$(du -h "dist-apk/$NAME.apk" | cut -f1)"
+            echo "- sha256：\`$(sha256sum "dist-apk/$NAME.apk" | cut -d' ' -f1)\`"
+            echo "- 已签名：$SIGNED"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.name.outputs.name }}
+          path: dist-apk/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      # 只在「推标签 + 已签名」时挂到 Release；未签名的包装不上，不往 Release 里放。
+      # 注意：推标签后 release.yml 的桌面任务和这里会各自去找 / 创建同一个草稿 Release，
+      # 极少数情况下会撞车出现两个草稿，遇到时在 GitHub 上手动把附件合并到一个即可。
+      - name: Attach APK to the release draft
+        if: github.ref_type == 'tag' && steps.signing.outputs.signed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: DeepReader ${{ github.ref_name }}
+          draft: true
+          files: dist-apk/*.apk
+          fail_on_unmatched_files: true
+
+      # 清理临时的签名材料（GitHub 托管运行器用完即销毁，自托管运行器才真正需要）
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore" "$RUNNER_TEMP/signing-config.json"
